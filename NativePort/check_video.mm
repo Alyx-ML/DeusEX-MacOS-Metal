@@ -34,6 +34,7 @@ struct MetalRenderChecks {
                 renderer.drawable=(id<CAMetalDrawable>)drawable;
                 desc.pixelFormat=MTLPixelFormatDepth32Float; desc.storageMode=MTLStorageModePrivate; desc.usage=MTLTextureUsageRenderTarget;
                 renderer.depth=[layer.device newTextureWithDescriptor:desc];
+                renderer.prepareFrameColor();
                 renderer.commands=[renderer.queue commandBuffer]; renderer.current=nullptr;
                 renderer.beginPass(true,true,vec4(0,0,0,1));
                 SceneNode frame{};
@@ -143,14 +144,74 @@ struct MetalRenderChecks {
             engine->renderScale=1;
             FrameVertices arena;
             std::vector<uint8_t> payload(1024*1024,42);
-            auto first=arena.upload(layer.device,payload.data(),payload.size());
-            auto second=arena.upload(layer.device,payload.data(),payload.size());
+            auto first=arena.reserve(layer.device,payload.size());
+            memcpy(first.first.contents,payload.data(),payload.size());
+            auto second=arena.reserve(layer.device,payload.size());
             assert(first.first!=second.first && first.second==0 && second.second==0);
             assert(memcmp(first.first.contents,payload.data(),payload.size())==0);
-            arena.reset(); auto reused=arena.upload(layer.device,payload.data(),17);
+            arena.reset(); auto reused=arena.reserve(layer.device,17);
             assert(reused.first==first.first && reused.second==0);
-            auto aligned=arena.upload(layer.device,payload.data(),1); assert(aligned.second==32);
+            auto aligned=arena.reserve(layer.device,1); assert(aligned.second==32);
             puts("PASS: 50/75/100% world scaling, one-pixel native HUD, screenshot dimensions, two-frame buffer reuse and chunk overflow");
+            // Compare the actual batched encoder with forced per-draw submission.
+            std::vector<TextureColor> reference;
+            for (bool immediate : {true,false}) {
+                frame=begin(16,16,false); TextureInfo empty;
+                for (int i=0;i<64;++i) {
+                    renderer.DrawTile(&frame,empty,(i%8)*2,(i/8)*2,2,2,0,0,1,1,1,vec4(float(i)/63,0.25f,0.75f,1),{},0);
+                    if (immediate) renderer.flushDraws();
+                }
+                auto pixels=finish(); assert(renderer.drawCalls==(immediate ? 64 : 1));
+                if (immediate) reference=pixels;
+                else assert(memcmp(reference.data(),pixels.data(),pixels.size()*sizeof(TextureColor))==0);
+            }
+            for (bool immediate : {true,false}) {
+                frame=begin(16,12,false); TextureInfo empty;
+                for (vec4 color : {vec4(.5f,0,0,.5f),vec4(0,0,.5f,.5f)}) {
+                    renderer.DrawTile(&frame,empty,0,0,16,12,0,0,1,1,1,color,{},PF_Highlighted);
+                    if (immediate) renderer.flushDraws();
+                }
+                auto pixels=finish(); checkRGB(pixels[6*16+8],64,0,128);
+                assert(renderer.drawCalls==(immediate ? 2 : 1));
+            }
+            frame=begin(16,12,false);
+            renderer.DrawTile(&frame,base,0,0,16,12,0,0,1,1,1,vec4(1),{},0);
+            renderer.ClearZ(); assert(renderer.drawCalls==1);
+            renderer.DrawTile(&frame,base,0,0,8,12,0,0,1,1,1,vec4(1),{},0);
+            renderer.SetSceneNode(&frame); assert(renderer.drawCalls==2);
+            renderer.DrawTile(&frame,base,0,0,8,12,0,0,1,1,1,vec4(1),{},0);
+            renderer.UpdateTextureRect(base,0,0,1,1); assert(renderer.drawCalls==3);
+            baseMip.Data={200,200,200,255};
+            renderer.DrawTile(&frame,base,8,0,8,12,0,0,1,1,1,vec4(1),{},0);
+            auto split=finish(); checkRGB(split[6*16+4],100,100,100); checkRGB(split[6*16+12],200,200,200);
+            baseMip.Data={100,100,100,255}; renderer.UpdateTextureRect(base,0,0,1,1);
+            frame=begin(16,12,false); TextureInfo empty;
+            for (int i=0;i<2000;++i) renderer.DrawTile(&frame,empty,0,0,16,12,0,0,1,1,1,vec4(1),{},0);
+            checkRGB(finish()[6*16+8],255,255,255); assert(renderer.drawCalls==2);
+            puts("PASS: 64 compatible draws -> 1 with identical pixels, transparent order, state/update boundaries and batch chunk rollover");
+
+            for (float brightness : {.25f,.5f,.75f,1.0f,-1.0f,5.0f,std::numeric_limits<float>::quiet_NaN()}) {
+                renderer.Brightness=brightness; engine->renderScale=.5f;
+                frame=begin(16,9,true); renderer.SetSceneNode(&frame); renderer.BeginWorld();
+                renderer.DrawTile(&frame,base,0,0,frame.X,frame.Y,0,0,1,1,1,vec4(1),{},0);
+                renderer.EndWorld();
+                renderer.DrawTile(&frame,empty,7,5,1,1,0,0,1,1,0,vec4(1),{},0);
+                auto pixels=finish();
+                float b=std::isfinite(brightness) ? std::clamp(brightness*2,.05f,2.99f) : 1;
+                int expected=std::round(255*std::pow(100.0f/255,1/b));
+                checkRGB(pixels[5*frame.X+6],expected,expected,expected); checkRGB(pixels[5*frame.X+7],255,255,255);
+                uint8_t full[16*9*4];
+                [renderer.lastFrame getBytes:full bytesPerRow:16*4 fromRegion:MTLRegionMake2D(0,0,16,9) mipmapLevel:0];
+                assert(full[(4*16)*4]==0 && full[(4*16+15)*4]==0);
+            }
+            renderer.Brightness=.75f; engine->renderScale=1;
+            frame=begin(16,12,false);
+            renderer.DrawTile(&frame,empty,0,0,16,12,0,0,1,1,1,vec4(.5f,0,0,.5f),{},PF_Highlighted);
+            renderer.DrawTile(&frame,empty,0,0,16,12,0,0,1,1,1,vec4(0,0,.5f,.5f),{},PF_Highlighted);
+            checkRGB(finish()[6*16+8],std::round(255*std::pow(64.0f/255,2.0f/3)),0,std::round(255*std::pow(128.0f/255,2.0f/3)));
+            renderer.Brightness=.5f;
+            puts("PASS: live brightness/gamma, neutral identity, invalid setting handling, native HUD/bars/screenshots and correction after blending");
+
         }
     }
 };

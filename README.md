@@ -44,7 +44,11 @@ Display options:
 - View > Rendering Resolution > 50%, 75% or 100% changes the world resolution.
   The HUD, menus and text stay at native display resolution at every setting.
 - Fog maps, mesh fog and macro surface textures are rendered when supplied by
-  the game. Vertex buffers are reused across frames to reduce allocation work.
+  the game. Compatible consecutive draws are batched in their original order,
+  with vertices written directly into reusable shared buffers.
+- The in-game brightness control now applies gamma correction to the completed
+  frame. The default 0.5 setting preserves the existing image; higher values
+  brighten midtones and lower values darken them.
 
 Saves, settings and game.log live in:
 ~/Library/Application Support/Deus Ex Native/
