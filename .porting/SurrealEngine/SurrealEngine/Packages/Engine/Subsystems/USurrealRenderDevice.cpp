@@ -17,6 +17,8 @@ std::string USurrealRenderDevice::GetPropertyAsString(const NameString& property
 		return IniPropertyConverter<bool>::ToString(ShinySurfaces);
 	else if (propertyName == "Coronas")
 		return IniPropertyConverter<bool>::ToString(Coronas);
+	else if (propertyName == "DetailTextures")
+		return IniPropertyConverter<bool>::ToString(DetailTextures);
 	else if (propertyName == "HighDetailActors")
 		return IniPropertyConverter<bool>::ToString(HighDetailActors);
 
@@ -34,6 +36,8 @@ void USurrealRenderDevice::SetPropertyFromString(const NameString& propertyName,
 		ShinySurfaces = IniPropertyConverter<bool>::FromString(value);
 	else if (propertyName == "Coronas")
 		Coronas = IniPropertyConverter<bool>::FromString(value);
+	else if (propertyName == "DetailTextures")
+		DetailTextures = IniPropertyConverter<bool>::FromString(value);
 	else if (propertyName == "HighDetailActors")
 		HighDetailActors = IniPropertyConverter<bool>::FromString(value);
 	else
@@ -53,6 +57,7 @@ void USurrealRenderDevice::LoadProperties(const NameString& from)
 	VolumetricLighting = IniPropertyConverter<bool>::FromIniFile(*engine->packages->GetIniFile("System"), name_from, "VolumetricLighting", VolumetricLighting);
 	ShinySurfaces = IniPropertyConverter<bool>::FromIniFile(*engine->packages->GetIniFile("System"), name_from, "ShinySurfaces", ShinySurfaces);
 	Coronas = IniPropertyConverter<bool>::FromIniFile(*engine->packages->GetIniFile("System"), name_from, "Coronas", Coronas);
+	DetailTextures = IniPropertyConverter<bool>::FromIniFile(*engine->packages->GetIniFile("System"), name_from, "DetailTextures", DetailTextures);
 	HighDetailActors = IniPropertyConverter<bool>::FromIniFile(*engine->packages->GetIniFile("System"), name_from, "HighDetailActors", HighDetailActors);
 }
 
@@ -62,5 +67,6 @@ void USurrealRenderDevice::SaveConfig()
 	engine->packages->SetIniValue("System", Class, "VolumetricLighting", IniPropertyConverter<bool>::ToString(VolumetricLighting));
 	engine->packages->SetIniValue("System", Class, "ShinySurfaces", IniPropertyConverter<bool>::ToString(ShinySurfaces));
 	engine->packages->SetIniValue("System", Class, "Coronas", IniPropertyConverter<bool>::ToString(Coronas));
+	engine->packages->SetIniValue("System", Class, "DetailTextures", IniPropertyConverter<bool>::ToString(DetailTextures));
 	engine->packages->SetIniValue("System", Class, "HighDetailActors", IniPropertyConverter<bool>::ToString(HighDetailActors));
 }

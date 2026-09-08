@@ -130,6 +130,8 @@ public:
 
 	int GetPixelWidth();
 	int GetPixelHeight();
+	Rect GetRenderRect();
+	static Rect FitRenderRect(int width, int height, bool classicAspectRatio);
 
 	void ToggleWindowFullscreen(Size newResolution);
 

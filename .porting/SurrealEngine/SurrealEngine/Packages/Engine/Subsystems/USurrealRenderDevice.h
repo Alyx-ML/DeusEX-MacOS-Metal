@@ -13,6 +13,7 @@ public:
 	bool ShinySurfaces = true;
 	bool Coronas = true;
 	bool HighDetailActors = true;
+	bool DetailTextures = true;
 
 	void LoadProperties(const NameString& from = "") override;
 	void SaveConfig() override;

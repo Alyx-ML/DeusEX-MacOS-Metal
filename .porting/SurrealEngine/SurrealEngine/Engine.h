@@ -216,6 +216,7 @@ public:
     void UpdateController(const ControllerState& state, float elapsed);
     float renderScale = 1.0f, interfaceScale = 1.0f;
     bool controllerEnabled = true;
+    bool classicAspectRatio = false;
 #ifdef __APPLE__
     void InitializeMacIntegration();
     void PollMacController(float elapsed);

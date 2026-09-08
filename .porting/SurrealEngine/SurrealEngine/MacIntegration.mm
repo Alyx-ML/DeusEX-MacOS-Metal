@@ -40,6 +40,10 @@ static UEditWindow* FocusedEdit()
         engine->interfaceScale = (float)value;
         [NSUserDefaults.standardUserDefaults setDouble:value forKey:@"InterfaceScale"];
         if (engine->dxRootWindow) engine->dxRootWindow->AskParentForReconfigure();
+    } else if (sender.tag == 3) {
+        engine->classicAspectRatio = value != 0;
+        [NSUserDefaults.standardUserDefaults setBool:engine->classicAspectRatio forKey:@"ClassicAspectRatio"];
+        if (engine->dxRootWindow) engine->dxRootWindow->AskParentForReconfigure();
     } else {
         engine->controllerEnabled = !engine->controllerEnabled;
         engine->UpdateController({}, 0);
@@ -51,6 +55,7 @@ static UEditWindow* FocusedEdit()
     if (item.action == @selector(edit:)) return FocusedEdit() != nullptr;
     if (item.action == @selector(setting:)) {
         if (item.tag == 2) item.state = engine->controllerEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+        else if (item.tag == 3) item.state = engine->classicAspectRatio == [item.representedObject boolValue] ? NSControlStateValueOn : NSControlStateValueOff;
         else {
             float current = item.tag == 0 ? engine->renderScale : engine->interfaceScale;
             item.state = std::abs(current - [item.representedObject floatValue]) < 0.01f ? NSControlStateValueOn : NSControlStateValueOff;
@@ -62,7 +67,7 @@ static UEditWindow* FocusedEdit()
 
 void Engine::InitializeMacIntegration()
 {
-    [NSUserDefaults.standardUserDefaults registerDefaults:@{@"RenderScale": @1.0, @"InterfaceScale": @1.0, @"ControllerEnabled": @YES}];
+    [NSUserDefaults.standardUserDefaults registerDefaults:@{@"RenderScale": @1.0, @"InterfaceScale": @1.0, @"ControllerEnabled": @YES, @"ClassicAspectRatio": @NO}];
     auto setting = [](NSString* key, float low, float high) {
         float value = [NSUserDefaults.standardUserDefaults floatForKey:key];
         return std::isfinite(value) ? std::clamp(value, low, high) : 1.0f;
@@ -70,6 +75,7 @@ void Engine::InitializeMacIntegration()
     renderScale = setting(@"RenderScale", 0.5f, 1.0f);
     interfaceScale = setting(@"InterfaceScale", 0.75f, 1.25f);
     controllerEnabled = [NSUserDefaults.standardUserDefaults boolForKey:@"ControllerEnabled"];
+    classicAspectRatio = [NSUserDefaults.standardUserDefaults boolForKey:@"ClassicAspectRatio"];
     const char* commands[16] = {"Jump", "Duck", "ParseRightClick", "ShowInventoryWindow", "PrevWeapon", "NextWeapon", "Fire", "ToggleScope", "ToggleWalk", "ReloadWeapon", "ShowInventoryWindow", "ShowMainMenu", "", "", "PrevWeapon", "NextWeapon"};
     for (int i=0; i<16; ++i) {
         auto& binding = keybindings[keynames[IK_Joy1+i]];
@@ -104,6 +110,12 @@ void Engine::InitializeMacIntegration()
             auto item = [parent.submenu addItemWithTitle:[NSString stringWithFormat:@"%@%%", percent] action:@selector(setting:) keyEquivalent:@""];
             item.target = actions; item.tag = type; item.representedObject = @([percent doubleValue] / 100.0);
         }
+    }
+    auto aspect = [view addItemWithTitle:@"Aspect Ratio" action:nil keyEquivalent:@""];
+    aspect.submenu = [[NSMenu alloc] initWithTitle:@"Aspect Ratio"];
+    for (int classic = 0; classic < 2; ++classic) {
+        auto item = [aspect.submenu addItemWithTitle:classic ? @"4:3 (Classic)" : @"Fit Window" action:@selector(setting:) keyEquivalent:@""];
+        item.target = actions; item.tag = 3; item.representedObject = @(classic);
     }
     auto controller = [view addItemWithTitle:@"Enable Controller" action:@selector(setting:) keyEquivalent:@""];
     controller.target = actions; controller.tag = 2;

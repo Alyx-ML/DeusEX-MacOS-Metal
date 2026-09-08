@@ -1,5 +1,7 @@
 #include "Precomp.h"
 #include "Engine.h"
+#include "Packages/Engine/USurrealClient.h"
+#include "Packages/Engine/Subsystems/USurrealRenderDevice.h"
 #include <deque>
 #include "RenderDevice/RenderDevice.h"
 #include "RenderDevice/OpenGL/GLTextureUploader.h"
@@ -14,21 +16,37 @@
 #include <stdexcept>
 
 namespace {
-struct Vertex { vec4 position,color; vec2 uv,lm; };
-static_assert(sizeof(Vertex)==48);
+struct Vertex { vec4 position,color; vec2 uv,lm; vec4 detail; };
+struct DrawFlags { uint32_t poly, textures; };
+static_assert(sizeof(Vertex)==64);
+
+int TextureBaseMip(const TextureInfo& info, const USurrealClient& client)
+{
+    if (!info.Texture || info.NumMips <= 1) return 0;
+    const auto lod = info.Texture->LODSet();
+    const NameString quality = lod == 1 ? client.TextureDetail : lod == 2 ? client.SkinDetail : "High";
+    const int level = quality == "Low" ? (lod == 2 ? 1 : 2) : quality == "Medium" ? 1 : 0;
+    return std::min(level, info.NumMips - 1);
+}
 const char* source=R"(
 #include <metal_stdlib>
 using namespace metal;
-struct V { float4 position,color; float2 uv,lm; };
-struct Out { float4 position [[position]]; float4 color; float2 uv,lm; };
+struct V { float4 position,color; float2 uv,lm; float4 detail; };
+struct DrawFlags { uint poly, textures; };
+struct Out { float4 position [[position]]; float4 color; float2 uv,lm,detail; };
 vertex Out mainVS(uint i [[vertex_id]],const device V* v [[buffer(0)]]) {
-    return {v[i].position,v[i].color,v[i].uv,v[i].lm};
+    return {v[i].position,v[i].color,v[i].uv,v[i].lm,v[i].detail.xy};
 }
-fragment float4 mainPS(Out v [[stage_in]],texture2d<float> tex [[texture(0)]],texture2d<float> light [[texture(1)]],sampler s [[sampler(0)]],constant uint& flags [[buffer(0)]]) {
+fragment float4 mainPS(Out v [[stage_in]],texture2d<float> tex [[texture(0)]],texture2d<float> light [[texture(1)]],texture2d<float> detail [[texture(2)]],sampler s [[sampler(0)]],constant DrawFlags& flags [[buffer(0)]]) {
     float4 c=tex.sample(s,v.uv);
-    if ((flags&2) && c.a<0.5) discard_fragment();
+    if ((flags.poly&2) && c.a<0.5) discard_fragment();
     c*=v.color;
-    if (flags&0x20000000u) c.rgb*=light.sample(s,v.lm).rgb*2.0;
+    if (flags.textures&1) c.rgb*=light.sample(s,v.lm).rgb*2.0;
+    if (flags.textures&2) {
+        float fade=clamp(2.0f-(1.0f/v.position.w)/380.0f,0.0f,1.0f);
+        float3 detailColor=(detail.sample(s,v.detail).rgb-0.5f)*0.8f+1.0f;
+        c.rgb=mix(c.rgb,c.rgb*detailColor,fade);
+    }
     return c;
 })";
 class MetalRenderDevice final : public RenderDevice {
@@ -44,7 +62,9 @@ class MetalRenderDevice final : public RenderDevice {
     id<MTLSamplerState> sampler,nearest;
     std::map<uint32_t,id<MTLRenderPipelineState>> pipelines;
     std::map<bool,id<MTLDepthStencilState>> depths;
-    std::map<std::pair<uint64_t,bool>,id<MTLTexture>> textures;
+    struct CachedTexture { int mip; id<MTLTexture> texture; };
+    std::map<std::pair<uint64_t,bool>,CachedTexture> textures;
+    Rect renderRect, lastFrameRect;
     mat4 transform=mat4::identity();
     SceneNode* current=nullptr;
     vec4 flashScale{},flashFog{};
@@ -52,13 +72,14 @@ class MetalRenderDevice final : public RenderDevice {
 
     id<MTLTexture> texture(TextureInfo* info,bool masked=false) {
         if (!info || !info->NumMips || !info->Mips) return white;
+        const int baseMip=TextureBaseMip(*info,*engine->client);
         const auto key=std::make_pair(info->CacheID,masked);
         auto found=textures.find(key);
-        if (found!=textures.end() && !info->bRealtimeChanged) return found->second;
+        if (found!=textures.end() && found->second.mip==baseMip && !info->bRealtimeChanged) return found->second.texture;
         auto uploader=GLTextureUploader::GetUploader(info->Format);
         if (!uploader || (uploader->GetInternalformat()!=GL_RGBA8 && uploader->GetInternalformat()!=GL_RGBA32F))
             throw std::runtime_error("Metal: unsupported texture format "+std::to_string(uint32_t(info->Format)));
-        auto& mip=info->Mips[0];
+        auto& mip=info->Mips[baseMip];
         if (mip.Width<=0 || mip.Height<=0 || mip.Width>16384 || mip.Height>16384) throw std::runtime_error("Metal: invalid texture dimensions");
         const size_t pixelSize=info->Format==TextureFormat::RGBA32_F ? 16 : 4;
         const size_t inputSize=info->Format==TextureFormat::P8 ? 1 : info->Format==TextureFormat::RGB8 ? 3 : pixelSize;
@@ -71,7 +92,7 @@ class MetalRenderDevice final : public RenderDevice {
         id<MTLTexture> result=[device newTextureWithDescriptor:desc];
         if (!result) throw std::runtime_error("Metal: texture allocation failed");
         [result replaceRegion:MTLRegionMake2D(0,0,mip.Width,mip.Height) mipmapLevel:0 withBytes:pixels.data() bytesPerRow:size_t(mip.Width)*pixelSize];
-        textures[key]=result;
+        textures[key]={baseMip,result};
         return result;
     }
     id<MTLRenderPipelineState> pipeline(uint32_t flags) {
@@ -106,7 +127,7 @@ class MetalRenderDevice final : public RenderDevice {
         [encoder setCullMode:MTLCullModeNone];
         if (current) SetSceneNode(current);
     }
-    void draw(const std::vector<Vertex>& vertices,TextureInfo* tex,TextureInfo* lm,uint32_t flags,MTLPrimitiveType primitive=MTLPrimitiveTypeTriangle) {
+    void draw(const std::vector<Vertex>& vertices,TextureInfo* tex,TextureInfo* lm,uint32_t flags,MTLPrimitiveType primitive=MTLPrimitiveTypeTriangle,TextureInfo* detail=nullptr) {
         if (!encoder || vertices.empty()) return;
         if (flags&PF_Translucent) flags&=~PF_Masked;
         id<MTLRenderPipelineState> state=pipeline(flags);
@@ -118,8 +139,9 @@ class MetalRenderDevice final : public RenderDevice {
         [encoder setVertexBuffer:buffer offset:0 atIndex:0];
         [encoder setFragmentTexture:texture(tex,flags&PF_Masked) atIndex:0];
         [encoder setFragmentTexture:texture(lm) atIndex:1];
-        if (lm) flags|=0x20000000u;
-        [encoder setFragmentBytes:&flags length:sizeof(flags) atIndex:0];
+        [encoder setFragmentTexture:texture(detail) atIndex:2];
+        DrawFlags drawFlags{flags, (lm ? 1u : 0u) | (detail ? 2u : 0u)};
+        [encoder setFragmentBytes:&drawFlags length:sizeof(drawFlags) atIndex:0];
         [encoder setFragmentSamplerState:(flags&PF_NoSmooth) ? nearest : sampler atIndex:0];
         [encoder setRenderPipelineState:state];
         [encoder drawPrimitives:primitive vertexStart:0 vertexCount:vertices.size()];
@@ -162,19 +184,21 @@ public:
             if (oldest.error) throw std::runtime_error(oldest.error.localizedDescription.UTF8String);
             inFlight.pop_front();
         }
-        layer.drawableSize=CGSizeMake(engine->window->GetPixelWidth(),engine->window->GetPixelHeight());
+        renderRect=engine->window->GetRenderRect();
+        layer.drawableSize=CGSizeMake(std::max(1, (int)std::round(engine->window->GetNativePixelWidth()*engine->renderScale)),
+            std::max(1, (int)std::round(engine->window->GetNativePixelHeight()*engine->renderScale)));
         drawable=[layer nextDrawable]; if (!drawable) return;
         auto t=drawable.texture;
         if (!depth || depth.width!=t.width || depth.height!=t.height) {
             auto desc=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float width:t.width height:t.height mipmapped:NO];
             desc.storageMode=MTLStorageModePrivate; desc.usage=MTLTextureUsageRenderTarget; depth=[device newTextureWithDescriptor:desc];
         }
-        commands=[queue commandBuffer]; current=nullptr; beginPass(true,true,clear);
+        commands=[queue commandBuffer]; current=nullptr; beginPass(true,true,engine->classicAspectRatio ? vec4(0,0,0,1) : clear);
     }
     void Unlock(bool blit) override {
         if (!commands) return;
         [encoder endEncoding]; encoder=nil;
-        lastFrame=drawable.texture;
+        lastFrame=drawable.texture; lastFrameRect=renderRect;
         if (blit) [commands presentDrawable:drawable];
         [commands commit];
         inFlight.push_back(commands);
@@ -186,7 +210,10 @@ public:
         current=frame;
         float rz=std::tan(radians(frame->FovAngle)*0.5f),aspect=frame->FY/frame->FX;
         transform=mat4::scale(1,-1,1)*mat4::frustum(-rz,rz,-aspect*rz,aspect*rz,1,32768,handedness::left,clipzrange::zero_positive_w)*frame->WorldToView*frame->ObjectToWorld;
-        if (encoder) [encoder setViewport:MTLViewport{double(frame->XB),double(frame->YB),double(frame->X),double(frame->Y),0,1}];
+        if (encoder) {
+            [encoder setViewport:MTLViewport{renderRect.x+frame->XB,renderRect.y+frame->YB,double(frame->X),double(frame->Y),0,1}];
+            [encoder setScissorRect:MTLScissorRect{NSUInteger(renderRect.x),NSUInteger(renderRect.y),NSUInteger(renderRect.width),NSUInteger(renderRect.height)}];
+        }
     }
     void DrawComplexSurface(SceneNode* frame,SurfaceInfo& surface,SurfaceFacet& facet) override {
         if (facet.VertexCount<3) return;
@@ -195,11 +222,14 @@ public:
         for (uint32_t i=0;i<facet.VertexCount;++i) {
             auto p=facet.Vertices[i]; auto relative=p-facet.MapCoords.Origin;
             vec2 uv{dot(facet.MapCoords.XAxis,relative),dot(facet.MapCoords.YAxis,relative)},base{},light{};
+            vec4 detail{};
             if (surface.Texture) base={(uv.x-surface.Texture->Pan.x)*GetUMult(*surface.Texture),(uv.y-surface.Texture->Pan.y)*GetVMult(*surface.Texture)};
             if (surface.LightMap) light={(uv.x-surface.LightMap->Pan.x+0.5f*surface.LightMap->UScale)*GetUMult(*surface.LightMap),(uv.y-surface.LightMap->Pan.y+0.5f*surface.LightMap->VScale)*GetVMult(*surface.LightMap)};
-            points.push_back({transform*vec4(p,1),vec4(1),base,light});
+            if (surface.DetailTexture) detail={(uv.x-surface.DetailTexture->Pan.x)*GetUMult(*surface.DetailTexture),(uv.y-surface.DetailTexture->Pan.y)*GetVMult(*surface.DetailTexture),0,0};
+            points.push_back({transform*vec4(p,1),vec4(1),base,light,detail});
         }
-        draw(fan(points),surface.Texture,surface.LightMap,surface.PolyFlags);
+        draw(fan(points),surface.Texture,surface.LightMap,surface.PolyFlags,MTLPrimitiveTypeTriangle,
+            engine->renderdev->DetailTextures ? surface.DetailTexture : nullptr);
     }
     void DrawGouraudPolygon(SceneNode* frame,TextureInfo& info,const GouraudVertex* p,int count,uint32_t flags) override {
         if (count<3) return; if (current!=frame) SetSceneNode(frame);
@@ -230,8 +260,8 @@ public:
         if (!lastFrame || !pixels) return;
         [lastSubmitted waitUntilCompleted];
         if (lastSubmitted.error) throw std::runtime_error(lastSubmitted.error.localizedDescription.UTF8String);
-        [lastFrame getBytes:pixels bytesPerRow:lastFrame.width*4 fromRegion:MTLRegionMake2D(0,0,lastFrame.width,lastFrame.height) mipmapLevel:0];
-        for(size_t i=0;i<lastFrame.width*lastFrame.height;++i) std::swap(pixels[i].R,pixels[i].B);
+        [lastFrame getBytes:pixels bytesPerRow:NSUInteger(lastFrameRect.width)*4 fromRegion:MTLRegionMake2D(lastFrameRect.x,lastFrameRect.y,lastFrameRect.width,lastFrameRect.height) mipmapLevel:0];
+        for(size_t i=0;i<size_t(lastFrameRect.width)*size_t(lastFrameRect.height);++i) std::swap(pixels[i].R,pixels[i].B);
     }
     void EndFlash() override {
         if(!current || (flashScale==vec4(0.5f,0.5f,0.5f,0) && flashFog==vec4(0))) return;

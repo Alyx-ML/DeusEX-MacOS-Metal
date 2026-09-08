@@ -53,7 +53,7 @@ for i, line in enumerate(lines):
 
 info = dict(CFBundleExecutable='SurrealEngine', CFBundleIdentifier='local.deusex.native',
             CFBundleName='Deus Ex', CFBundleDisplayName='Deus Ex', CFBundlePackageType='APPL',
-            CFBundleShortVersionString='0.1', CFBundleVersion='6', LSMinimumSystemVersion='27.0',
+            CFBundleShortVersionString='0.1.1', CFBundleVersion='7', LSMinimumSystemVersion='27.0',
             NSHighResolutionCapable=True, NSSupportsAutomaticGraphicsSwitching=True,
             LSApplicationCategoryType='public.app-category.role-playing-games',
             LSSupportsGameMode=True, GCSupportsGameMode=True, GCSupportsControllerUserInteraction=True)
@@ -104,7 +104,7 @@ with tarfile.open(source_archive, 'w:gz') as tar:
         if source.is_file():
             assert source.suffix.lower() not in {'.exe', '.dll', '.u', '.dx', '.utx', '.uax', '.umx', '.o', '.a', '.dylib'}, source
             tar.add(source, arcname=str(pathlib.Path('Deus-Ex-Mac/.porting/SurrealEngine') / name), recursive=False)
-    for name in ('package_launcher.mm', 'game_install.h', 'package_app.py', 'check_install.cpp', 'check_install.py', 'INSTALL.md'):
+    for name in ('package_launcher.mm', 'game_install.h', 'package_app.py', 'check_install.cpp', 'check_install.py', 'check_input.py', 'check_input.cpp', 'check_video.mm', 'INSTALL.md'):
         tar.add(root / 'NativePort' / name, arcname='Deus-Ex-Mac/NativePort/' + name)
 shutil.copy2(root / 'NativePort/INSTALL.md', dist / 'INSTALL.md')
 (dist / 'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in (archive, source_archive)))

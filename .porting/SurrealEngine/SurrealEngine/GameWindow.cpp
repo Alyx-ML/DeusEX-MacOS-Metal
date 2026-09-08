@@ -30,15 +30,23 @@ RenderDevice* GameWindow::GetRenderDevice()
 	return device.get();
 }
 
-int GameWindow::GetPixelWidth()
+Rect GameWindow::FitRenderRect(int width, int height, bool classicAspectRatio)
 {
-	return std::max(1, (int)std::round(GetNativePixelWidth() * engine->renderScale));
+    width = std::max(width, 1);
+    height = std::max(height, 1);
+    if (!classicAspectRatio || width < 4 || height < 3) return {0, 0, double(width), double(height)};
+    const int unit = std::min(width / 4, height / 3);
+    return {double((width - unit * 4) / 2), double((height - unit * 3) / 2), double(unit * 4), double(unit * 3)};
 }
 
-int GameWindow::GetPixelHeight()
+Rect GameWindow::GetRenderRect()
 {
-	return std::max(1, (int)std::round(GetNativePixelHeight() * engine->renderScale));
+    return FitRenderRect((int)std::round(GetNativePixelWidth() * engine->renderScale),
+        (int)std::round(GetNativePixelHeight() * engine->renderScale), engine->classicAspectRatio);
 }
+
+int GameWindow::GetPixelWidth() { return (int)GetRenderRect().width; }
+int GameWindow::GetPixelHeight() { return (int)GetRenderRect().height; }
 
 void GameWindow::ToggleWindowFullscreen(Size newResolution)
 {

@@ -33,6 +33,14 @@ Keep this folder available: the app reads its game data directly.
 Hold Option while opening the app to choose a different installation. If the
 remembered folder is missing, the picker opens again. Cancel exits the app.
 
+Display options:
+- macOS menu bar: View > Aspect Ratio > 4:3 (Classic) adds black bars and keeps
+  the world and HUD at their proper proportions. Fit Window restores widescreen.
+  The selection is remembered for the next launch.
+- In-game video settings: Detail Textures now switches the close-up surface
+  detail layer on/off and remembers the choice. World/Object Texture Detail
+  selects the texture mip level; interface textures keep their original detail.
+
 Saves, settings and game.log live in:
 ~/Library/Application Support/Deus Ex Native/
 
@@ -50,9 +58,8 @@ notarization. A downloaded copy may require approval in macOS Privacy & Security
 Upload Deus-Ex-Mac-ARM64.zip, Deus-Ex-Mac-Source.tar.gz, SHA256SUMS.txt and this
 file together to a GitHub Release. Neither archive contains the original game.
 The source archive includes this build's modifications and library sources.
-The current development repository also tracks original game files and other
-local artifacts: do not publish the whole working tree or its history as a
-source release. The generated source archive is the scoped source distribution.
+Only publish the generated archives and clean source. Keep your owned game
+files out of Git and release uploads.
 
 This modified build is based on SurrealEngine by Magnus Norddahl, Lupert Everett
 and contributors. Library notices are inside the app's Resources/Licenses.
@@ -69,6 +76,7 @@ currently expects the Apple silicon Homebrew SDL3 installation).
     cmake -S .porting/SurrealEngine -B .porting/SurrealEngine/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=27.0 -DENABLE_SDL3=ON
     cmake --build .porting/SurrealEngine/build --target SurrealEngine -j 6
     python3 NativePort/check_install.py "/path/to/your/Deus Ex GOTY"
+    python3 NativePort/check_input.py check_video.mm "/path/to/your/Deus Ex GOTY"
     python3 NativePort/package_app.py
 
 The packaging step produces dist/Deus Ex Mac/ and the release files.
