@@ -1,0 +1,139 @@
+name: Continuous Integration
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: ${{ matrix.config.name }} | ${{ matrix.config.build_type }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - name: Visual Studio 2022
+          os: windows-2022
+          build_type: RelWithDebInfo
+
+        - name: Visual Studio 2022
+          os: windows-2022
+          build_type: Debug
+
+        - name: Linux GCC 12
+          os: ubuntu-22.04
+          extra_options: -DCMAKE_C_COMPILER=gcc-12 -DCMAKE_CXX_COMPILER=g++-12
+          deps_cmdline: sudo apt update && sudo apt install libsdl2-dev libx11-dev libopenal-dev
+          build_type: RelWithDebInfo
+
+        - name: Linux Clang 15
+          os: ubuntu-22.04
+          extra_options: -DCMAKE_C_COMPILER=clang-15 -DCMAKE_CXX_COMPILER=clang++-15
+          deps_cmdline: sudo apt-get update && sudo apt-get install clang-15 libsdl2-dev libx11-dev libopenal-dev
+          build_type: RelWithDebInfo
+
+        - name: macOS arm64
+          os: macos-latest
+          build_type: RelWithDebInfo
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        if [[ -n "${{ matrix.config.deps_cmdline }}" ]]; then
+          eval ${{ matrix.config.deps_cmdline }}
+        fi
+        mkdir build
+
+    - name: Configure
+      shell: bash
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} -DPK3_QUIET_ZIPDIR=ON ${{ matrix.config.extra_options }} .
+
+    - name: Build
+      shell: bash
+      run: |
+        export MAKEFLAGS=--keep-going
+        cmake --build build --config ${{ matrix.config.build_type }} --parallel 3
+
+    - name: Create Package
+      if: (runner.os == 'Windows' || matrix.config.name == 'Linux GCC 12' || runner.os == 'macOS') && matrix.config.build_type == 'RelWithDebInfo'
+      shell: bash
+      run: |
+        cd build
+        mkdir package
+        if [[ "${{ runner.os }}" == 'Windows' ]]; then
+          cp ${{ matrix.config.build_type }}/SurrealEngine.exe package
+          cp ${{ matrix.config.build_type }}/SurrealEditor.exe package
+          cp ${{ matrix.config.build_type }}/SurrealDebugger.exe package
+          cp ${{ matrix.config.build_type }}/SurrealEngine.pk3 package
+          cp ${{ matrix.config.build_type }}/SurrealVideo.dll package
+          cp ${{ matrix.config.build_type }}/OpenAL32.dll package
+          cp ${{ matrix.config.build_type }}/SurrealEngine-stripped.pdb package/SurrealEngine.pdb
+          cp ${{ matrix.config.build_type }}/SurrealEditor-stripped.pdb package/SurrealEditor.pdb
+          cp ${{ matrix.config.build_type }}/SurrealDebugger-stripped.pdb package/SurrealDebugger.pdb
+        elif [[ "${{ runner.os }}" == 'Linux' ]]; then
+          cp SurrealEngine SurrealEditor SurrealDebugger SurrealEngine.pk3 libSurrealVideo.so package
+          strip package/SurrealEngine
+          strip package/SurrealEditor
+          strip package/SurrealDebugger
+          strip package/libSurrealVideo.so
+        elif [[ "${{ runner.os }}" == 'macOS' ]]; then
+          cp -r SurrealEngine.app package
+        fi
+
+    - name: Upload Package
+      if: runner.os == 'Windows' || matrix.config.name == 'Linux GCC 12' || runner.os == 'macOS'
+      uses: actions/upload-artifact@v4
+      with:
+        path: build/package
+        name: ${{ matrix.config.name }} ${{ matrix.config.build_type }}
+
+    - name: List Build Directory
+      if: always()
+      shell: bash
+      run: |
+        git status
+        ls -lR build
+
+  deploy:
+    name: Update Latest successful build
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: Visual Studio 2022 RelWithDebInfo
+        path: build/SurrealEngine-windows-prerelease
+
+    - name: Download Linux artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: Linux GCC 12 RelWithDebInfo
+        path: build/SurrealEngine-linux-prerelease
+
+    - name: Download macOS artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: macOS arm64 RelWithDebInfo
+        path: build/SurrealEngine-macos-prerelease
+
+    - name: Zip artifacts
+      shell: bash
+      run: |
+        cd build
+        zip -r SurrealEngine-windows-prerelease.zip SurrealEngine-windows-prerelease
+        zip -r SurrealEngine-linux-prerelease.zip SurrealEngine-linux-prerelease
+        zip -r SurrealEngine-macos-prerelease.zip SurrealEngine-macos-prerelease
+
+    - name: Update nightly release
+      uses: pyTooling/Actions/releaser@r0
+      with:
+        tag: nightly
+        rm: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        files: build/SurrealEngine-windows-prerelease.zip build/SurrealEngine-linux-prerelease.zip build/SurrealEngine-macos-prerelease.zip
+

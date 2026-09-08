@@ -1,0 +1,115 @@
+# Surreal Engine - Current Status
+
+The engine can load and render the maps. The Unrealscript VM is almost feature complete - only arrays and network conditional execution are not implemented yet.
+
+It will attempt to load all level actors and initialize the map. However, while the menus and the HUD will appear, there are still many native functions not implemented yet. It is also quite possible some events aren't firing as they should. You will therefore see exceptions shown if you interact with them and that is where the project is at.
+
+At the time of this writing, SurrealEngine can **detect** the following UE1 games:
+
+* Unreal Tournament (v436, v451b, v469(a, b, c, d, e))
+* Unreal (v200, v209, v220, v224v, v225f, v226f)
+* Unreal Gold (v226b, v227(i, j, k_11, k_14))
+* Deus Ex (v1002f, v1112fm)
+* Klingon Honor Guard (219)
+* NERF Arena Blast (v300)
+* TNN Outdoors Pro Hunter (v200)
+* Rune Classic (v1.10)
+* Clive Barker's Undying (v420)
+* Tactical-Ops: Assault on Terror (v3.4.0 and v3.5.0 - both running under UT436 and UT469 engines)
+* Wheel of Time (v333)
+
+> [!NOTE]
+> Detection does not mean the games will work! From the list above, only the explicitly named games down below can be launched. Running any other game can and will result in crashes.
+
+
+## General Engine bugs (affects all games)
+* Movers:
+  - Projectiles pass through some movers
+  - It is possible to get stuck on some movers when approached from certain angles
+  - Encroachment stuff isn't implemented, so movers don't crush anything or return back to their previous position.
+* Mirrors/reflections rendering is a bit buggy, especially around the edges of world geometry.
+* Portals:
+  - They somewhat work, but might end up "pushing" players/projectiles in unexpected directions.
+* Semisolid brushes are finicky. Usually you'll fall through them as if they weren't there.
+* Bot and Scripted Pawn AI while better than before, still isn't fully functional.
+* Bots literally rotate their entire body (feet off the ground) to look up/down in ways they shouldn't be able to.
+* Waving water textures at the end of waterfalls render broken. Easily observable in NyLeve's Falls (Unreal) or DM-ArcaneTemple (UT)
+* Underwater collisions are somewhat buggy, especially on Klingon Honor Guard
+* If the player currently has a power-up active that tints the screen (like Invisibility or Energy Amplifier), the tint remains
+(and accumulates if a new power-up of the same type is picked up and activated) until the player switches to a different map.
+* viewclass command crashes with null deref.
+* Sometimes opening a map crashes the engine with a "Failed to spawn the player actor" error.
+* Sounds may become too loud (e.g. Pulse Rifle secondary fire, minigun firing sound)
+* Inventory from loaded saves do NOT transfer to the next map.
+* Saving packages (.u[xx] files, game saves, etc.) functionality is not fully implemented yet.
+* There is no networking support at all.
+* By design, native mods will never work with SE. Thankfully these kind of mods are extremely rare.
+* **[Linux/SurrealWidgets]** - Wayland backend is somewhat buggy due to Wayland APIs being unpleasant to work with, to name a few things:
+  - Menus don't properly position themselves.
+  - Sometimes menus remain persistent (due to rapidly switching?)
+  - Running any SurrealWidgets app (launcher/SurrealEditor) on GNOME will probably lead to not being able to move the window around, 
+  because SurrealWidgets has no custom window decorations (as it uses server side decorations when they're available)
+
+## Unreal (Gold)
+
+226 version of the game launches. Menu options works most of the time. Single player maps can be played, as well as botmatches. Bots can sometimes move around and attack.
+
+227i version of the game also launches. Single player maps can be played, as well as botmatches. Some menu items may not work, and lots of new features (e.g. Emitters, Static Meshes) are not implemented.
+
+227j patch isn't tested, while 227k_14 crashes immediately.
+
+### Known Bugs:
+* [227*] Many new native functions/features are not yet implemented.
+* [227i] Translator Scale option does not do anything.
+* Some UPak native functions are not implemented yet.
+* Nali Fruit Seeds and ASMDs in a map don't render, but are pickable.
+* ASMD tertiary fire rings render wrong.
+
+## Unreal Tournament
+
+436 version of the game launches. Menu options will work and botmatches can be played. Bots will behave more or less like they do in Unreal and some maps might have some functionality missing.
+
+469c version of the game also launches. So far the touch events doesn't work.
+
+Anything beyond 469c currently won't boot.
+
+### Known bugs:
+* [469*] Many new native functions/features are not yet implemented.
+* Shock Rifle beams render glitchy.
+* Player can slide through on some of the catwalks in the room with lava in DM-Conveyor
+
+## Deus Ex
+
+1112fm version of the game boots to title screen and the beginning sections of the training map can be played. Nothing much else has been tested, so expect crashes.
+
+### Known bugs:
+* Some native functions are still not implemented.
+* Conversation system is not fully implemented yet.
+* If you click on the area where the saves should be in the Load Game menu the buttons below stop working so you cannot go back.
+* In-game HUD has some missing text.
+* DataCubes and books cannot be read yet.
+
+## Tactical-Ops: Assault on Terror
+
+### Known bugs:
+* Currently, game crashes immediately due to SE being unable to find "TO_Replacer.ini".
+* Attempting to bring up the menus crashes the engine.
+* Opening up any map crashes the engine.
+
+## Klingon Honor Guard
+
+1.1 patch of the game launches. AI behaves more or less the same as the other games.
+
+Known bugs list is quite small right now because this game isn't tested as much as Unreal and UT yet.
+
+### Known bugs:
+* Cannot set keybinds in-game (Modifying the ini file works though).
+* Trying to start a botmatch crashes SE.
+
+## Nerf Arena Blast
+
+The game boots up. Things seem to work but the game has not been extensively tested.
+
+## Any other UE1 game not mentioned above
+
+They crash the engine upon startup for various reasons. Will probably take quite a while before the necessary functionality gets implemented.

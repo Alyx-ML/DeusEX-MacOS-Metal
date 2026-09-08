@@ -1,0 +1,1136 @@
+
+#include "Precomp.h"
+#include "NActor.h"
+#include "VM/NativeFunc.h"
+#include "VM/ScriptCall.h"
+#include "VM/Frame.h"
+#include "Packages/Core/UClass.h"
+#include "Packages/Engine/UViewport.h"
+#include "Packages/Engine/Resources/USound.h"
+#include "Packages/Engine/Resources/Level/ULevel.h"
+#include "Packages/Engine/Resources/Mesh/UMesh.h"
+#include "Packages/Engine/Actors/UActor.h"
+#include "Packages/Engine/Actors/UDecal.h"
+#include "Packages/Engine/Actors/Pawn/UPlayerPawn.h"
+#include "Packages/Engine/Actors/Info/UZoneInfo.h"
+#include "Packages/Engine/Actors/Info/ULevelInfo.h"
+#include "Package/PackageManager.h"
+#include "Engine.h"
+#include "Audio/AudioDevice.h"
+#include "Packages/Engine/Subsystems/USurrealAudioDevice.h"
+#include "Utils/StrTools.h"
+
+void NActor::RegisterFunctions()
+{
+	if (engine->LaunchInfo.IsUnreal1_227k())
+		RegisterVMNativeFunc_5("Actor", "AllActors", &NActor::AllActors_U227k, 304);
+	else if (engine->LaunchInfo.IsUnreal1_227())
+		RegisterVMNativeFunc_4("Actor", "AllActors", &NActor::AllActors_U227, 304);
+	else
+		RegisterVMNativeFunc_3("Actor", "AllActors", &NActor::AllActors, 304);
+	RegisterVMNativeFunc_1("Actor", "AutonomousPhysics", &NActor::AutonomousPhysics, 3971);
+	RegisterVMNativeFunc_2("Actor", "BasedActors", &NActor::BasedActors, 306);
+	RegisterVMNativeFunc_2("Actor", "ChildActors", &NActor::ChildActors, 305);
+	RegisterVMNativeFunc_2("Actor", "ConsoleCommand", &NActor::ConsoleCommand, 0);
+	RegisterVMNativeFunc_3("Actor", "CycleActors", &NActor::CycleActors, 1002);
+	RegisterVMNativeFunc_6("Actor", "DemoPlaySound", &NActor::DemoPlaySound, 0);
+	RegisterVMNativeFunc_1("Actor", "Destroy", &NActor::Destroy, 279);
+	RegisterVMNativeFunc_1("Actor", "Error", &NActor::Error, 233);
+	RegisterVMNativeFunc_3("Actor", "FastTrace", &NActor::FastTrace, 548);
+	RegisterVMNativeFunc_0("Actor", "FinishInterpolation", &NActor::FinishInterpolation, 301);
+	RegisterLatentAction(302, LatentRunState::FinishInterpolation);
+	RegisterVMNativeFunc_2("Actor", "GetAnimGroup", &NActor::GetAnimGroup, 293);
+	RegisterVMNativeFunc_6("Actor", "GetBoundingBox", &NActor::GetBoundingBox, 724);
+	RegisterVMNativeFunc_4("Actor", "GetCacheEntry", &NActor::GetCacheEntry, 0);
+	RegisterVMNativeFunc_4("Actor", "GetMapName", &NActor::GetMapName, 539);
+	RegisterVMNativeFunc_2("Actor", "GetMeshTexture", &NActor::GetMeshTexture, 1013);
+	RegisterVMNativeFunc_3("Actor", "GetNextInt", &NActor::GetNextInt, 0);
+	RegisterVMNativeFunc_4("Actor", "GetNextIntDesc", &NActor::GetNextIntDesc, 0);
+	if (engine->LaunchInfo.ue1Version > 219)
+		RegisterVMNativeFunc_5("Actor", "GetNextSkin", &NActor::GetNextSkin, 545);
+	else
+		RegisterVMNativeFunc_4("Actor", "GetNextSkin", &NActor::GetNextSkin_219, 545);
+	RegisterVMNativeFunc_2("Actor", "GetSoundDuration", &NActor::GetSoundDuration, 0);
+	RegisterVMNativeFunc_1("Actor", "GetURLMap", &NActor::GetURLMap, 547);
+	RegisterVMNativeFunc_2("Actor", "HasAnim", &NActor::HasAnim, 263);
+	if (engine->LaunchInfo.IsUnreal1_227())
+		RegisterVMNativeFunc_4("Actor", "IntDescIterator", &NActor::IntDescIterator_U227, 313);
+	RegisterVMNativeFunc_2("Actor", "IsOverlapping", &NActor::IsOverlapping, 718);
+	RegisterVMNativeFunc_1("Actor", "LastRendered", &NActor::LastRendered, 723);
+	RegisterVMNativeFunc_1("Actor", "LinkSkelAnim", &NActor::LinkSkelAnim, 0);
+	RegisterVMNativeFunc_1("Actor", "MakeNoise", &NActor::MakeNoise, 512);
+	RegisterVMNativeFunc_2("Actor", "Move", &NActor::Move, 266);
+	RegisterVMNativeFunc_3("Actor", "MoveCacheEntry", &NActor::MoveCacheEntry, 0);
+	RegisterVMNativeFunc_2("Actor", "MoveSmooth", &NActor::MoveSmooth, 3969);
+	RegisterVMNativeFunc_6("Actor", "PlayOwnedSound", &NActor::PlayOwnedSound, 0);
+	if (!engine->LaunchInfo.IsDeusEx())
+		RegisterVMNativeFunc_6("Actor", "PlaySound", &NActor::PlaySound, 264);
+	else
+		RegisterVMNativeFunc_7("Actor", "PlaySound", &NActor::PlaySound_Deus, 264);
+	RegisterVMNativeFunc_1("Actor", "PlayerCanSeeMe", &NActor::PlayerCanSeeMe, 532);
+	RegisterVMNativeFunc_4("Actor", "RadiusActors", &NActor::RadiusActors, 310);
+	RegisterVMNativeFunc_1("Actor", "SetBase", &NActor::SetBase, 298);
+	RegisterVMNativeFunc_3("Actor", "SetCollision", &NActor::SetCollision, 262);
+	RegisterVMNativeFunc_3("Actor", "SetCollisionSize", &NActor::SetCollisionSize, 283);
+	RegisterVMNativeFunc_2("Actor", "SetLocation", &NActor::SetLocation, 267);
+	RegisterVMNativeFunc_1("Actor", "SetOwner", &NActor::SetOwner, 272);
+	if (!engine->LaunchInfo.IsDeusEx())
+		RegisterVMNativeFunc_1("Actor", "SetPhysics", &NActor::SetPhysics, 3970);
+	else
+		RegisterVMNativeFunc_2("Actor", "SetPhysics", &NActor::SetPhysics_Deus, 3970);
+	RegisterVMNativeFunc_2("Actor", "SetRotation", &NActor::SetRotation, 299);
+	RegisterVMNativeFunc_2("Actor", "SetTimer", &NActor::SetTimer, 280);
+	RegisterVMNativeFunc_1("Actor", "Sleep", &NActor::Sleep, 256);
+	RegisterLatentAction(257, LatentRunState::Sleep);
+	RegisterVMNativeFunc_6("Actor", "Spawn", &NActor::Spawn, 278);
+	RegisterVMNativeFunc_2("Actor", "TouchingActors", &NActor::TouchingActors, 307);
+	if (engine->LaunchInfo.IsUnreal1_227())
+		RegisterVMNativeFunc_9("Actor", "Trace", &NActor::Trace_U227, 277);
+	else
+		RegisterVMNativeFunc_7("Actor", "Trace", &NActor::Trace, 277);
+	RegisterVMNativeFunc_7("Actor", "TraceActors", &NActor::TraceActors, 309);
+	RegisterVMNativeFunc_2("Actor", "TweenAnim", &NActor::TweenAnim, 294);
+	RegisterVMNativeFunc_4("Actor", "VisibleActors", &NActor::VisibleActors, 311);
+	if (engine->LaunchInfo.ue1Version > 219)
+		RegisterVMNativeFunc_5("Actor", "VisibleCollidingActors", &NActor::VisibleCollidingActors, 312);
+	else
+		RegisterVMNativeFunc_4("Actor", "VisibleCollidingActors", &NActor::VisibleCollidingActors_219, 312);
+	RegisterVMNativeFunc_1("Actor", "GetPlayerPawn", &NActor::GetPlayerPawn, 720);
+	RegisterVMNativeFunc_1("Actor", "AIClearEvent", &NActor::AIClearEvent, 716);
+	RegisterVMNativeFunc_1("Actor", "AIClearEventCallback", &NActor::AIClearEventCallback, 711);
+	RegisterVMNativeFunc_2("Actor", "AIEndEvent", &NActor::AIEndEvent, 715);
+	RegisterVMNativeFunc_2("Actor", "AIGetLightLevel", &NActor::AIGetLightLevel, 700);
+	RegisterVMNativeFunc_4("Actor", "AISendEvent", &NActor::AISendEvent, 713);
+	RegisterVMNativeFunc_7("Actor", "AISetEventCallback", &NActor::AISetEventCallback, 710);
+	RegisterVMNativeFunc_4("Actor", "AIStartEvent", &NActor::AIStartEvent, 714);
+	RegisterVMNativeFunc_2("Actor", "AIVisibility", &NActor::AIVisibility, 701);
+	RegisterVMNativeFunc_10("Actor", "TraceTexture", &NActor::TraceTexture, 1000);
+	RegisterVMNativeFunc_7("Actor", "TraceVisibleActors", &NActor::TraceVisibleActors, 1003);
+
+	// Color operators
+	// They do not exist in Unreal 1 until the 227j patch and they use different native indexes on j and later
+	if (engine->LaunchInfo.IsUnreal1_227k())
+	{
+		RegisterVMNativeFunc_3("Actor", "Add_ColorColor", &NActor::Add_ColorColor, 552);
+		RegisterVMNativeFunc_3("Actor", "Subtract_ColorColor", &NActor::Subtract_ColorColor, 550);
+		RegisterVMNativeFunc_3("Actor", "Multiply_ColorFloat", &NActor::Multiply_ColorFloat, 553);
+		RegisterVMNativeFunc_3("Actor", "Multiply_FloatColor", &NActor::Multiply_FloatColor, 551);
+	}
+	else if (!engine->LaunchInfo.IsUnreal1())
+	{
+		RegisterVMNativeFunc_3("Actor", "Add_ColorColor", &NActor::Add_ColorColor, 551);
+		RegisterVMNativeFunc_3("Actor", "Subtract_ColorColor", &NActor::Subtract_ColorColor, 549); // U227 reserves this slot for PlayerPawn.IsPressing()
+		RegisterVMNativeFunc_3("Actor", "Multiply_ColorFloat", &NActor::Multiply_ColorFloat, 552);
+		RegisterVMNativeFunc_3("Actor", "Multiply_FloatColor", &NActor::Multiply_FloatColor, 550);
+	}
+
+	if (engine->LaunchInfo.IsUnreal1_227())
+	{
+		RegisterVMNativeFunc_7("Actor", "TraceSurfHitInfo", &NActor::TraceSurfHitInfo_U227, 1736);
+		RegisterVMNativeFunc_6("Actor", "TraceThisActor", &NActor::TraceThisActor_U227, 1739);
+	}
+
+	if (engine->LaunchInfo.IsDeusEx())
+	{
+		RegisterVMNativeFunc_1("Actor", "InStasis", &NActor::InStasis, 721);
+		RegisterVMNativeFunc_11("Actor", "ParabolicTrace", &NActor::ParabolicTrace, 722);
+		RegisterVMNativeFunc_5("Actor", "RandomBiasedRotation", &NActor::RandomBiasedRotation, 717);
+		RegisterVMNativeFunc_1("Actor", "SetInstantMusicVolume", &NActor::SetInstantMusicVolume, 270);
+		RegisterVMNativeFunc_1("Actor", "SetInstantSoundVolume", &NActor::SetInstantSoundVolume, 268);
+		RegisterVMNativeFunc_1("Actor", "SetInstantSpeechVolume", &NActor::SetInstantSpeechVolume, 269);
+		RegisterVMNativeFunc_1("Actor", "StopSound", &NActor::StopSound_Deus, 265);
+		RegisterVMNativeFunc_4("Actor", "PlayBlendAnim", &NActor::PlayBlendAnim, 1010);
+		RegisterVMNativeFunc_3("Actor", "TweenBlendAnim", &NActor::TweenBlendAnim, 1012);
+	}
+	if (engine->LaunchInfo.IsHarryPotter1())
+	{
+		RegisterVMNativeFunc_5("Actor", "PlayAnim", &NActor::PlayAnim_HP, 259);
+		RegisterVMNativeFunc_6("Actor", "LoopAnim", &NActor::LoopAnim_HP, 260);
+		RegisterVMNativeFunc_2("Actor", "GetWorldCollisionBox", &NActor::GetWorldCollisionBox, 286);
+		RegisterVMNativeFunc_1("Actor", "GetRenderExtent", &NActor::GetRenderExtent, 274);
+		RegisterVMNativeFunc_5("Actor", "CreateAnimChannel", &NActor::CreateAnimChannel, 265);
+		RegisterVMNativeFunc_2("Actor", "BoneNumber", &NActor::BoneNumber, 268);
+		RegisterVMNativeFunc_2("Actor", "BoneName", &NActor::BoneName, 269);
+		RegisterVMNativeFunc_2("Actor", "BonePos", &NActor::BonePos, 257);
+		RegisterVMNativeFunc_2("Actor", "CreateTextureFromScreenShot", &NActor::CreateTextureFromScreenShot, 322);
+		RegisterVMNativeFunc_3("Actor", "CreateTextureFromBMP", &NActor::CreateTextureFromBMP, 321);
+		RegisterVMNativeFunc_3("Actor", "SaveObjectAsFile", &NActor::SaveObjectAsFile, 323);
+		RegisterVMNativeFunc_3("Actor", "LoadObjectAsFile", &NActor::LoadObjectAsFile, 324);
+		RegisterVMNativeFunc_3("Actor", "SaveGameSaveInfo", &NActor::SaveGameSaveInfo, 325);
+		RegisterVMNativeFunc_3("Actor", "LoadGameSaveInfo", &NActor::LoadGameSaveInfo, 326);
+		RegisterVMNativeFunc_1("Actor", "IsOSVer2kOrXP", &NActor::IsOSVer2kOrXP, 327);
+		RegisterVMNativeFunc_2("Actor", "StopSound", &NActor::StopSound_HP, 568);
+		RegisterVMNativeFunc_2("Actor", "IsAnimating", &NActor::IsAnimating_HP, 282);
+		RegisterVMNativeFunc_1("Actor", "FinishAnim", &NActor::FinishAnim_HP, 261);
+		RegisterLatentAction(262, LatentRunState::FinishAnim);
+	}
+	else
+	{
+		RegisterVMNativeFunc_3("Actor", "PlayAnim", &NActor::PlayAnim, 259);
+		RegisterVMNativeFunc_4("Actor", "LoopAnim", &NActor::LoopAnim, 260);
+		RegisterVMNativeFunc_1("Actor", "IsAnimating", &NActor::IsAnimating, 282);
+		RegisterVMNativeFunc_0("Actor", "FinishAnim", &NActor::FinishAnim, 261);
+		RegisterLatentAction(262, LatentRunState::FinishAnim);
+	}
+}
+
+void NActor::Add_ColorColor(const Color& A, const Color& B, Color& ReturnValue)
+{
+	Color c;
+	c.R = std::min(A.R + (int)B.R, 255);
+	c.G = std::min(A.G + (int)B.G, 255);
+	c.B = std::min(A.B + (int)B.B, 255);
+	c.A = std::min(A.A + (int)B.A, 255);
+	ReturnValue = c;
+}
+
+void NActor::AllActors(UObject* Self, UObject* BaseClass, UObject*& Actor, std::optional<NameString> MatchTag)
+{
+	Frame::CreatedIterator = std::make_unique<AllActorsIterator>(BaseClass, &Actor, MatchTag ? *MatchTag : std::string());
+}
+
+void NActor::AllActors_U227(UObject* Self, UObject* BaseClass, UObject*& Actor, std::optional<NameString> MatchTag, std::optional<NameString> MatchEvent)
+{
+	Frame::CreatedIterator = std::make_unique<AllActorsIterator>(BaseClass, &Actor, MatchTag ? *MatchTag : std::string(), MatchEvent ? *MatchEvent : std::string());
+}
+
+void NActor::AllActors_U227k(UObject* Self, UObject* BaseClass, UObject*& Actor, std::optional<NameString> MatchTag, std::optional<NameString> MatchEvent, bool bAllLevels)
+{
+	Frame::CreatedIterator = std::make_unique<AllActorsIterator>(BaseClass, &Actor, MatchTag ? *MatchTag : std::string(), MatchEvent ? *MatchEvent : std::string(), bAllLevels);
+}
+
+void NActor::AutonomousPhysics(UObject* Self, float DeltaSeconds)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	SelfActor->TickPhysics(DeltaSeconds);
+}
+
+void NActor::BasedActors(UObject* Self, UObject* BaseClass, UObject*& Actor)
+{
+	Frame::CreatedIterator = std::make_unique<BasedActorsIterator>(UObject::Cast<UActor>(Self), BaseClass, &Actor);
+}
+
+void NActor::ChildActors(UObject* Self, UObject* BaseClass, UObject*& Actor)
+{
+	Frame::CreatedIterator = std::make_unique<ChildActorsIterator>(UObject::Cast<UActor>(Self), BaseClass, &Actor);
+}
+
+void NActor::CycleActors(UObject* Self, UObject* BaseClass, UObject*& Actor, int& index)  
+{  
+	Frame::CreatedIterator = std::make_unique<CycleActorsIterator>(BaseClass, &Actor, &index);  
+}
+
+void NActor::ConsoleCommand(UObject* Self, const std::string& Command, std::string& ReturnValue)
+{
+	// "Execute a console command in the context of the current level and game engine"
+
+	ExpressionValue found = ExpressionValue::BoolValue(false);
+	ReturnValue = engine->ConsoleCommand(Self, Command, found.ToType<BitfieldBool&>());
+}
+
+void NActor::DemoPlaySound(UObject* Self, UObject* Sound, std::optional<uint8_t> Slot, std::optional<float> Volume, std::optional<bool> bNoOverride, std::optional<float> Radius, std::optional<float> Pitch)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	USound* s = UObject::Cast<USound>(Sound);
+	if (s)
+	{
+		int slot = Slot ? *Slot : SLOT_Misc;
+		int id = ((((int)(ptrdiff_t)SelfActor) & 0xffffff) << 4) + (slot << 1);
+		if (bNoOverride && *bNoOverride) id |= 1;
+
+		if (engine->LaunchInfo.IsKlingonHonorGuard())
+		{
+			engine->audiodev->PlaySound(SelfActor, id, s, SelfActor->Location(), Volume ? *Volume : SelfActor->TransientSoundVolume(), Radius ? (*Radius) : SelfActor->SoundRadius(), Pitch ? *Pitch : 1.0f, slot == SLOT_Talk);
+		}
+		else
+		{
+			engine->audiodev->PlaySound(SelfActor, id, s, SelfActor->Location(), Volume ? *Volume : SelfActor->TransientSoundVolume(), Radius ? (*Radius) : SelfActor->TransientSoundRadius(), Pitch ? *Pitch : 1.0f, slot == SLOT_Talk);
+		}
+	}
+}
+
+void NActor::Destroy(UObject* Self, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->Destroy();
+}
+
+void NActor::Error(UObject* Self, const std::string& S)
+{
+	LogMessage("Error: " + S);
+	UObject::Cast<UActor>(Self)->Destroy();
+}
+
+void NActor::FastTrace(UObject* Self, const vec3& TraceEnd, std::optional<vec3> TraceStart, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	vec3 start = TraceStart ? *TraceStart : SelfActor->Location();
+	ReturnValue = SelfActor->FastTrace(start, TraceEnd);
+}
+
+void NActor::FinishAnim(UObject* Self)
+{
+	UObject::Cast<UActor>(Self)->FinishAnim();
+}
+
+void NActor::FinishInterpolation(UObject* Self)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	if (Self->StateFrame)
+		Self->StateFrame->LatentState = LatentRunState::FinishInterpolation;
+}
+
+void NActor::GetAnimGroup(UObject* Self, const NameString& Sequence, NameString& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->GetAnimGroup(Sequence);
+}
+
+void NActor::GetBoundingBox(UObject* Self, vec3& MinVect, vec3& MaxVect, std::optional<bool> bExact, std::optional<vec3> testLocation, std::optional<Rotator> testRotation, BitfieldBool& ReturnValue)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);  
+	if (!actor) { ReturnValue = false; return; }  
+  
+	bool bExactVal = bExact ? *bExact : false;  
+	if (bExactVal || testLocation || testRotation)  
+	{  
+		actor->UpdateBspInfo(); 
+	}  
+  
+	BBox bbox = actor->BspInfo.BoundingBox;  
+  
+	if (testLocation || testRotation)  
+	{  
+		vec3 loc = testLocation ? *testLocation : actor->Location();  
+		Rotator rot = testRotation ? *testRotation : actor->Rotation();  
+		mat4 objectToWorld = mat4::translate(loc) * Coords::Rotation(rot).ToMatrix();  
+		bbox = bbox.transform(objectToWorld);  
+	}  
+  
+	MinVect = bbox.min;  
+	MaxVect = bbox.max;  
+	ReturnValue = true;  
+}
+
+void NActor::GetCacheEntry(UObject* Self, int Num, std::string& Guid, std::string& Filename, BitfieldBool& ReturnValue)
+{
+	LogUnimplemented("Actor.GetCacheEntry");
+	ReturnValue = false;
+}
+
+void NActor::GetNextInt(UObject* Self, const std::string& ClassName, int Num, std::string& ReturnValue)
+{
+	Array<IntObject>& objects = engine->packages->GetIntObjects(ClassName);
+	if (Num >= 0 && (size_t)Num < objects.size())
+		ReturnValue = objects[Num].Name.ToString();
+	else
+		ReturnValue = {};
+}
+
+void NActor::GetNextIntDesc(UObject* Self, const std::string& ClassName, int Num, std::string& Entry, std::string& Description)
+{
+	Array<IntObject>& objects = engine->packages->GetIntObjects(ClassName);
+	if (Num >= 0 && (size_t)Num < objects.size())
+	{
+		Entry = objects[Num].Name.ToString();
+		Description = objects[Num].Description;
+	}
+	else
+	{
+		Entry = {};
+		Description = {};
+	}
+}
+
+void NActor::GetMapName(UObject* Self, const std::string& NameEnding, const std::string& MapName, int Dir, std::string& ReturnValue)
+{
+	Array<std::string> maps;
+
+	// Filter list to only those with the matching map type
+	for (const std::string& name : engine->packages->GetMaps())
+	{
+		// Case insensitive prefix comparison because Unreal Deathmatch maps start with "Dm" instead of "DM"
+		if ( name.size() >= NameEnding.size() && StrTools::equals_ignore_case(name.substr(0, NameEnding.size()), NameEnding) )
+			maps.push_back(name);
+	}
+
+	// Find the previous or next map relative to the MapName specified
+	if (!MapName.empty() && MapName != "None")
+	{
+		auto it = std::find(maps.begin(), maps.end(), MapName);
+		if (it != maps.end())
+		{
+			int index = (int)std::distance(maps.begin(), it) + Dir;
+			if (index < 0)
+				index = (int)maps.size() - 1;
+			else if (index >= (int)maps.size())
+				index = 0;
+			ReturnValue = maps[index];
+			return;
+		}
+	}
+
+	// Grab first map if map wasn't found or none was specified
+	ReturnValue = !maps.empty() ? maps.front() : std::string();
+}
+
+void NActor::GetNextSkin_219(UObject* Self, const std::string& Prefix, const std::string& CurrentSkin, int Dir, std::string& ReturnValue)
+{
+	std::string SkinDesc;
+	GetNextSkin(Self, Prefix, CurrentSkin, Dir, ReturnValue, SkinDesc);
+}
+
+void NActor::GetNextSkin(UObject* Self, const std::string& Prefix, const std::string& CurrentSkin, int Dir, std::string& SkinName, std::string& SkinDesc)
+{
+	// To do: is this even right? Why does the skin name have Mesh/ in front of it? Are we doing a workaround for a bug somewhere else?
+	std::string prefix;
+	size_t slashpos = Prefix.find_last_of('/');
+	if (slashpos != std::string::npos)
+		prefix = Prefix.substr(slashpos + 1);
+	else
+		prefix = Prefix;
+
+	Array<const IntObject*> skins;
+
+	// Filter list to only those with the matching skin prefix
+	for (const IntObject& skin : engine->packages->GetIntObjects("Texture"))
+	{
+		std::string skinName = skin.Name.ToString();
+		if (skinName.size() >= prefix.size() && skinName.substr(0, prefix.size()) == prefix)
+			skins.push_back(&skin);
+	}
+
+	// Find the previous or next skin relative to the CurrentSkin specified
+	if (!CurrentSkin.empty() && CurrentSkin != "None")
+	{
+		auto it = std::find_if(skins.begin(), skins.end(), [&](auto skin) { return skin->Name == CurrentSkin; });
+		if (it != skins.end())
+		{
+			int index = (int)std::distance(skins.begin(), it) + Dir;
+			if (index < 0)
+				index = (int)skins.size() - 1;
+			else if (index >= (int)skins.size())
+				index = 0;
+
+			SkinName = skins[index]->Name.ToString();
+			SkinDesc = skins[index]->Description;
+			return;
+		}
+	}
+
+	// Grab first skin if skin wasn't found or none was specified
+	if (!skins.empty())
+	{
+		SkinName = skins.front()->Name.ToString();
+		SkinDesc = skins.front()->Description;
+	}
+	else
+	{
+		SkinName = {};
+		SkinDesc = {};
+	}
+}
+
+void NActor::GetSoundDuration(UObject* Self, UObject* Sound, float& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	USound* s = UObject::Cast<USound>(Sound);
+	ReturnValue = s->GetDuration();
+}
+
+void NActor::GetURLMap(UObject* Self, std::string& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->Level()->URL.Map;
+}
+
+void NActor::HasAnim(UObject* Self, const NameString& Sequence, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->HasAnim(Sequence);
+}
+
+void NActor::IntDescIterator_U227(UObject* Self, std::string& ClassName, std::string* EntryName, std::string* Desc, std::optional<bool> bSingleNames)
+{
+	Frame::CreatedIterator = std::make_unique<IntDescIterator>(ClassName, EntryName, Desc, bSingleNames);
+}
+
+void NActor::IsAnimating(UObject* Self, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->IsAnimating();
+}
+
+void NActor::IsOverlapping(UObject* Self, UObject* checkActor, BitfieldBool& ReturnValue)
+{
+	UActor* selfActor = UObject::Cast<UActor>(Self);  
+	UActor* otherActor = UObject::Cast<UActor>(checkActor);  
+	ReturnValue = selfActor && otherActor && selfActor->IsOverlapping(otherActor); 
+}
+
+void NActor::LastRendered(UObject *Self, float &ReturnValue)
+{
+	if (UDecal* decal = UObject::TryCast<UDecal>(Self))  
+	{  
+		ReturnValue = decal->LastRenderedTime();  
+	}  
+	else  
+	{  
+		ReturnValue = 0.0f; // UActor no tiene LastRenderedTime  
+	}  
+}
+
+void NActor::LinkSkelAnim(UObject* Self, UObject* Anim)
+{
+	LogUnimplemented("Actor.LinkSkelAnim");
+}
+
+void NActor::LoopAnim(UObject* Self, const NameString& Sequence, std::optional<float> Rate, std::optional<float> TweenTime, std::optional<float> MinRate)
+{
+	UObject::Cast<UActor>(Self)->LoopAnim(Sequence, Rate ? *Rate : 1.0f, TweenTime ? *TweenTime : 0.0f, MinRate ? *MinRate : 0.0f);
+}
+
+void NActor::MakeNoise(UObject* Self, float Loudness)
+{
+	UObject::Cast<UActor>(Self)->MakeNoise(Loudness);
+}
+
+void NActor::Move(UObject* Self, const vec3& Delta, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->Move(Delta);
+}
+
+void NActor::MoveCacheEntry(UObject* Self, const std::string& Guid, std::optional<std::string> NewFilename, BitfieldBool& ReturnValue)
+{
+	LogUnimplemented("Actor.MoveCacheEntry");
+	ReturnValue = false;
+}
+
+void NActor::MoveSmooth(UObject* Self, const vec3& Delta, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->MoveSmooth(Delta);
+}
+
+void NActor::Multiply_ColorFloat(const Color& A, float B, Color& ReturnValue)
+{
+	Color c;
+	c.R = (int)std::round(clamp(A.R * B, 0.0f, 255.0f));
+	c.G = (int)std::round(clamp(A.G * B, 0.0f, 255.0f));
+	c.B = (int)std::round(clamp(A.B * B, 0.0f, 255.0f));
+	c.A = A.A;
+	ReturnValue = c;
+}
+
+void NActor::Multiply_FloatColor(float A, const Color& B, Color& ReturnValue)
+{
+	Color c;
+	c.R = (int)std::round(clamp(A * B.R, 0.0f, 255.0f));
+	c.G = (int)std::round(clamp(A * B.G, 0.0f, 255.0f));
+	c.B = (int)std::round(clamp(A * B.B, 0.0f, 255.0f));
+	c.A = B.A;
+	ReturnValue = c;
+}
+
+void NActor::PlayAnim(UObject* Self, const NameString& Sequence, std::optional<float> Rate, std::optional<float> TweenTime)
+{
+	UObject::Cast<UActor>(Self)->PlayAnim(Sequence, Rate ? *Rate : 1.0f, TweenTime ? *TweenTime : 0.0f);
+}
+
+void NActor::PlayBlendAnim(UObject* Self, const NameString& Sequence, std::optional<float> Rate, std::optional<float> TweenTime, std::optional<uint8_t> BlendSlot)
+{
+	UObject::Cast<UActor>(Self)->PlayBlendAnim(Sequence, Rate ? *Rate : 1.0f, TweenTime ? *TweenTime : 0.0f, BlendSlot ? *BlendSlot : 0);
+}
+
+void NActor::PlayOwnedSound(UObject* Self, UObject* Sound, std::optional<uint8_t> Slot, std::optional<float> Volume, std::optional<bool> bNoOverride, std::optional<float> Radius, std::optional<float> Pitch)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	USound* s = UObject::Cast<USound>(Sound);
+	if (s)
+	{
+		int slot = Slot ? *Slot : SLOT_Misc;
+		int id = ((((int)(ptrdiff_t)SelfActor) & 0xffffff) << 4) + (slot << 1);
+		if (bNoOverride && *bNoOverride) id |= 1;
+		if (engine->LaunchInfo.IsKlingonHonorGuard())
+		{
+			engine->audiodev->PlaySound(SelfActor, id, s, SelfActor->Location(), Volume ? *Volume : SelfActor->TransientSoundVolume(), Radius ? (*Radius) : SelfActor->SoundRadius(), Pitch ? *Pitch : 1.0f, slot == SLOT_Talk);
+		}
+		else
+		{
+			engine->audiodev->PlaySound(SelfActor, id, s, SelfActor->Location(), Volume ? *Volume : SelfActor->TransientSoundVolume(), Radius ? (*Radius) : SelfActor->TransientSoundRadius(), Pitch ? *Pitch : 1.0f, slot == SLOT_Talk);
+		}
+	}
+}
+
+void NActor::PlaySound(UObject* Self, UObject* Sound, std::optional<uint8_t> Slot, std::optional<float> Volume, std::optional<bool> bNoOverride, std::optional<float> Radius, std::optional<float> Pitch)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	USound* s = UObject::Cast<USound>(Sound);
+	if (s)
+	{
+		int slot = Slot ? *Slot : SLOT_Misc;
+		int id = ((((int)(ptrdiff_t)SelfActor) & 0xffffff) << 4) + (slot << 1);
+		if (bNoOverride && *bNoOverride) id |= 1;
+		if (engine->LaunchInfo.IsKlingonHonorGuard())
+		{
+			engine->audiodev->PlaySound(SelfActor, id, s, SelfActor->Location(), Volume ? *Volume : SelfActor->TransientSoundVolume(), Radius ? (*Radius) : SelfActor->SoundRadius(), Pitch ? *Pitch : 1.0f, slot == SLOT_Talk);
+		}
+		else
+		{
+			engine->audiodev->PlaySound(SelfActor, id, s, SelfActor->Location(), Volume ? *Volume : SelfActor->TransientSoundVolume(), Radius ? (*Radius) : SelfActor->TransientSoundRadius(), Pitch ? *Pitch : 1.0f, slot == SLOT_Talk);
+		}
+	}
+}
+
+void NActor::PlaySound_Deus(UObject* Self, UObject* Sound, std::optional<uint8_t> Slot, std::optional<float> Volume, std::optional<bool> bNoOverride, std::optional<float> Radius, std::optional<float> Pitch, int& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	USound* s = UObject::Cast<USound>(Sound);
+	if (s)
+	{
+		int slot = Slot ? *Slot : SLOT_Misc;
+		int id = ((((int)(ptrdiff_t)SelfActor) & 0xffffff) << 4) + (slot << 1);
+		if (bNoOverride && *bNoOverride) id |= 1;
+		engine->audiodev->PlaySound(SelfActor, id, s, SelfActor->Location(), Volume ? *Volume : SelfActor->TransientSoundVolume(), Radius ? (*Radius) : SelfActor->TransientSoundRadius(), Pitch ? *Pitch : 1.0f, slot == SLOT_Talk);
+		ReturnValue = id;
+	}
+	else
+	{
+		ReturnValue = 0;
+	}
+}
+
+
+void NActor::PlayerCanSeeMe(UObject* Self, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->PlayerCanSeeMe();
+}
+
+void NActor::RadiusActors(UObject* Self, UObject* BaseClass, UObject*& Actor, float Radius, std::optional<vec3> Loc)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	Frame::CreatedIterator = std::make_unique<RadiusActorsIterator>(SelfActor, BaseClass, &Actor, Radius, Loc ? *Loc : SelfActor->Location());
+}
+
+void NActor::SetBase(UObject* Self, UObject* NewBase)
+{
+	UObject::Cast<UActor>(Self)->SetBase(UObject::Cast<UActor>(NewBase), true);
+}
+
+void NActor::SetCollision(UObject* Self, std::optional<bool> NewColActors, std::optional<bool> NewBlockActors, std::optional<bool> NewBlockPlayers)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	SelfActor->SetCollision(
+		NewColActors ? *NewColActors : SelfActor->bCollideActors(),
+		NewBlockActors ? *NewBlockActors : SelfActor->bBlockActors(),
+		NewBlockPlayers ? *NewBlockPlayers : SelfActor->bBlockPlayers());
+}
+
+void NActor::SetCollisionSize(UObject* Self, float NewRadius, float NewHeight, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->SetCollisionSize(NewRadius, NewHeight);
+}
+
+void NActor::SetLocation(UObject* Self, const vec3& NewLocation, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->SetLocation(NewLocation);
+}
+
+void NActor::SetOwner(UObject* Self, UObject* NewOwner)
+{
+	UObject::Cast<UActor>(Self)->SetOwner(UObject::Cast<UActor>(NewOwner));
+}
+
+void NActor::SetPhysics(UObject* Self, uint8_t newPhysics)
+{
+	UObject::Cast<UActor>(Self)->SetPhysics(newPhysics);
+	// We are calling Self->SetBase() for all other calls to SetPhysics. Do we need to do it here as well?
+}
+
+void NActor::SetPhysics_Deus(UObject* Self, uint8_t newPhysics, std::optional<UObject*> newFloor)
+{
+	// To do: do something with that optional new floor
+	// We are calling Self->SetBase() for all other calls to SetPhysics. Do we need to do it here as well?
+	UObject::Cast<UActor>(Self)->SetPhysics(newPhysics);
+}
+
+void NActor::SetRotation(UObject* Self, const Rotator& NewRotation, BitfieldBool& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->SetRotation(NewRotation);
+}
+
+void NActor::SetTimer(UObject* Self, float NewTimerRate, bool bLoop)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	SelfActor->TimerCounter() = 0.0f;
+	SelfActor->TimerRate() = NewTimerRate > 0.0f ? NewTimerRate : 0.0f;
+	SelfActor->bTimerLoop() = bLoop;
+}
+
+void NActor::Sleep(UObject* Self, float Seconds)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	SelfActor->SleepTimeLeft = Seconds;
+	if (Self->StateFrame)
+		Self->StateFrame->LatentState = LatentRunState::Sleep;
+}
+
+void NActor::Spawn(UObject* Self, UObject* SpawnClass, std::optional<UObject*> SpawnOwner, std::optional<NameString> SpawnTag, std::optional<vec3> SpawnLocation, std::optional<Rotator> SpawnRotation, UObject*& ReturnValue)
+{
+	ReturnValue = UObject::Cast<UActor>(Self)->Spawn(
+		UObject::Cast<UClass>(SpawnClass),
+		SpawnOwner ? std::optional<UActor*>(UObject::Cast<UActor>(*SpawnOwner)) : std::optional<UActor*>(),
+		SpawnTag,
+		SpawnLocation,
+		SpawnRotation);
+}
+
+void NActor::Subtract_ColorColor(const Color& A, const Color& B, Color& ReturnValue)
+{
+	Color c;
+	c.R = std::max(A.R - (int)B.R, 0);
+	c.G = std::max(A.G - (int)B.G, 0);
+	c.B = std::max(A.B - (int)B.B, 0);
+	c.A = std::max(A.A - (int)B.A, 0);
+	ReturnValue = c;
+}
+
+void NActor::TouchingActors(UObject* Self, UObject* BaseClass, UObject*& Actor)
+{
+	Frame::CreatedIterator = std::make_unique<TouchingActorsIterator>(UObject::TryCast<UActor>(Self), BaseClass, &Actor);
+}
+
+void NActor::Trace(UObject* Self, vec3& HitLocation, vec3& HitNormal, const vec3& TraceEnd, std::optional<vec3> TraceStart, std::optional<bool> bTraceActors, std::optional<vec3> Extent, UObject*& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->Trace(
+		HitLocation, HitNormal, TraceEnd,
+		TraceStart ? *TraceStart : SelfActor->Location(),
+		bTraceActors ? *bTraceActors : false,
+		Extent ? *Extent : vec3(0, 0, 0));
+}
+
+void NActor::Trace_U227(UObject* Self, vec3& HitLocation, vec3& HitNormal, const vec3& TraceEnd, std::optional<vec3> TraceStart, std::optional<bool> bTraceActors, std::optional<vec3> Extent, std::optional<bool> bTraceBSP, std::optional<uint8_t> BSPTraceFlags, UObject*& ReturnValue)
+{
+	auto SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->Trace(
+		HitLocation, HitNormal, TraceEnd,
+		TraceStart ? *TraceStart : SelfActor->Location(),
+		bTraceActors ? *bTraceActors : false,
+		Extent ? *Extent : vec3(0, 0, 0),
+		bTraceBSP ? *bTraceBSP : true,
+		BSPTraceFlags ? *BSPTraceFlags : 0);
+}
+
+void NActor::TraceActors(UObject* Self, UObject* BaseClass, UObject*& Actor, vec3& HitLoc, vec3& HitNorm, const vec3& End, std::optional<vec3> Start, std::optional<vec3> Extent)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	Frame::CreatedIterator = std::make_unique<TraceActorsIterator>(
+		SelfActor, BaseClass, &Actor, &HitLoc, &HitNorm, End,
+		Start ? *Start : SelfActor->Location(),
+		Extent ? *Extent : vec3(0, 0, 0)); // CHECK ME: is this correct?
+}
+
+void NActor::TweenAnim(UObject* Self, const NameString& Sequence, float Time)
+{
+	UObject::Cast<UActor>(Self)->TweenAnim(Sequence, Time);
+}
+
+void NActor::VisibleActors(UObject* Self, UObject* BaseClass, UObject*& Actor, std::optional<float> Radius, std::optional<vec3> Loc)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	Frame::CreatedIterator = std::make_unique<VisibleActorsIterator>(
+		SelfActor, BaseClass, &Actor,
+		Radius ? *Radius : SelfActor->CollisionRadius(),
+		Loc ? *Loc : SelfActor->Location());
+}
+
+void NActor::VisibleCollidingActors(UObject* Self, UObject* BaseClass, UObject*& Actor, std::optional<float> Radius, std::optional<vec3> Loc, std::optional<bool> bIgnoreHidden)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	Frame::CreatedIterator = std::make_unique<VisibleCollidingActorsIterator>(
+		BaseClass, &Actor,
+		Radius ? *Radius : SelfActor->CollisionRadius(),
+		Loc ? *Loc : SelfActor->Location(),
+		bIgnoreHidden ? *bIgnoreHidden : false);
+}
+
+void NActor::VisibleCollidingActors_219(UObject* Self, UObject* BaseClass, UObject*& Actor, std::optional<float> Radius, std::optional<vec3> Loc)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	Frame::CreatedIterator = std::make_unique<VisibleCollidingActorsIterator>(
+		BaseClass, &Actor,
+		Radius ? *Radius : SelfActor->CollisionRadius(),
+		Loc ? *Loc : SelfActor->Location(),
+		false);
+}
+
+void NActor::GetMeshTexture(UObject* Self, std::optional<int> texnum, UObject*& ReturnValue)  
+{  
+	UActor* actor = UObject::Cast<UActor>(Self);  
+	UMesh* mesh = actor ? actor->Mesh() : nullptr;  
+	int index = texnum ? *texnum : 0;  
+	if (!mesh || index < 0 || index >= (int)mesh->Textures.size())  
+	{  
+		ReturnValue = engine->DefaultTexture;  
+		return;  
+	}  
+  
+	UTexture* tex = actor->GetMultiskin(index);  
+	if (!tex)  
+	{  
+		if (!mesh->Textures[index] || index == 0)  
+			tex = actor->Skin();  
+		if (!tex)  
+			tex = mesh->Textures[index];  
+		if (!tex)  
+			tex = actor->Texture();  
+	}  
+	ReturnValue = tex ? tex : engine->DefaultTexture;  
+}
+
+void NActor::GetPlayerPawn(UObject* Self, UObject*& ReturnValue)  
+{  
+	if (engine && engine->viewport && engine->viewport->Actor())  
+	{  
+		ReturnValue = engine->viewport->Actor();  
+		return;  
+	}  
+  
+	if (engine && engine->Level)  
+	{  
+		for (UActor* actor : engine->Level->Actors)  
+		{  
+			UPlayerPawn* pawn = UObject::TryCast<UPlayerPawn>(actor);  
+			if (pawn && pawn->Player())  
+			{  
+				ReturnValue = pawn;  
+				return;  
+			}  
+		}  
+	}  
+  
+	ReturnValue = nullptr;  
+}
+
+void NActor::AIClearEvent(UObject* Self, const NameString& eventName)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);
+	actor->AIClearEvent(eventName);
+}
+
+void NActor::AIClearEventCallback(UObject* Self, const NameString& eventName)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);
+	actor->AIClearEventCallback(eventName);
+}
+
+void NActor::AIEndEvent(UObject* Self, const NameString& eventName, uint8_t eventType)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);
+	actor->AIEndEvent(eventName, eventType);
+}
+
+void NActor::AIGetLightLevel(UObject* Self, const vec3& Location, float& ReturnValue)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);
+	ReturnValue = actor->AIGetLightLevel(Location);
+}
+
+void NActor::AISendEvent(UObject* Self, const NameString& eventName, uint8_t eventType, std::optional<float> Value, std::optional<float> Radius)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);
+	actor->AISendEvent(eventName, eventType, Value, Radius);
+}
+
+void NActor::AISetEventCallback(UObject* Self, const NameString& eventName, const NameString& callback, std::optional<NameString> scoreCallback, std::optional<bool> bCheckVisibility, std::optional<bool> bCheckDir, std::optional<bool> bCheckCylinder, std::optional<bool> bCheckLOS)
+{
+	LogUnimplemented("Actor.AISetEventCallback");
+}
+
+void NActor::AIStartEvent(UObject* Self, const NameString& eventName, uint8_t eventType, std::optional<float> Value, std::optional<float> Radius)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);
+	actor->AIStartEvent(eventName, eventType, Value, Radius);
+}
+
+void NActor::AIVisibility(UObject* Self, std::optional<bool> bIncludeVelocity, float& ReturnValue)
+{
+	UActor* actor = UObject::Cast<UActor>(Self);
+	ReturnValue = actor->AIVisibility(bIncludeVelocity);
+}
+
+void NActor::TraceTexture(UObject* Self, UObject* BaseClass, UObject*& Actor, NameString& texName, NameString& texGroup, int& flags, vec3& HitLoc, vec3& HitNorm, const vec3& End, std::optional<vec3> Start, std::optional<vec3> Extent)
+{
+	// Deus Ex
+	auto SelfActor = UObject::Cast<UActor>(Self);
+	vec3 realStart = Start ? *Start : SelfActor->Location();
+	vec3 realExtent = Extent ? *Extent : vec3(0, 0, 0);
+
+	Frame::CreatedIterator = std::make_unique<TraceTextureIterator>(BaseClass, &Actor, &texName, &texGroup, &flags, HitLoc, HitNorm, End, &realStart, &realExtent);
+}
+
+void NActor::TraceVisibleActors(UObject* Self, UObject* BaseClass, UObject*& Actor, vec3& HitLoc, vec3& HitNorm, const vec3& End, std::optional<vec3> Start, std::optional<vec3> Extent)
+{
+	// Deus Ex
+	auto SelfActor = UObject::Cast<UActor>(Self);
+	vec3 realStart = Start ? *Start : SelfActor->Location();
+	vec3 realExtent = Extent ? *Extent : vec3(0, 0, 0);
+
+	Frame::CreatedIterator = std::make_unique<TraceVisibleActorsIterator>(BaseClass, &Actor, HitLoc, HitNorm, End, &realStart, &realExtent);
+}
+
+void NActor::TraceSurfHitInfo_U227(UObject* Self, vec3& Start, vec3& End, vec3* HitLocation, vec3* HitNormal, UObject* HitTex, int* HitFlags, BitfieldBool& ReturnValue)
+{
+	auto SelfActor = UObject::Cast<UActor>(Self);
+	auto Tex = UObject::Cast<UTexture>(HitTex);
+
+	ReturnValue = SelfActor->TraceSurfHitInfo(Start, End, HitLocation, HitNormal, Tex, HitFlags);
+}
+
+void NActor::TraceThisActor_U227(UObject* Self, vec3& TraceEnd, vec3& TraceStart, vec3* HitLocation, vec3* HitNormal, std::optional<vec3> Extent, BitfieldBool& ReturnValue)
+{
+	auto SelfActor = UObject::Cast<UActor>(Self);
+
+	ReturnValue = SelfActor->TraceThisActor(TraceEnd, TraceStart, HitLocation, HitNormal, Extent);
+}
+
+void NActor::InStasis(UObject* Self, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->bStasis() || SelfActor->bForceStasis();
+}
+
+void NActor::ParabolicTrace(UObject* Self, vec3& finalLocation, std::optional<vec3> startVelocity, std::optional<vec3> startLocation, std::optional<bool> bCheckActors, std::optional<vec3> Cylinder, std::optional<float> maxTime, std::optional<float> elasticity, std::optional<bool> bBounce, std::optional<float> landingSpeed, std::optional<float> granularity, float& ReturnValue)  
+{  
+	UActor* SelfActor = UObject::Cast<UActor>(Self);  
+	vec3 pos = *startLocation;  
+	vec3 velocity = *startVelocity;  
+	bool bHit = false;  
+	float timeElapsed = 0.0f;  
+	vec3 hitLocation;  
+	vec3 hitNormal;  
+	vec3 previousNormal = vec3(0, 0, 0);  
+	  
+	while(!bHit && timeElapsed < *maxTime)  
+	{  
+		pos += velocity * *granularity;  
+		velocity.z -= SelfActor->Region().Zone->ZoneGravity().z * *granularity;  
+		  
+		if (SelfActor->Trace(hitLocation, hitNormal, pos, *startLocation, *bCheckActors, Cylinder ? *Cylinder : vec3(0, 0, 0)))  
+		{  
+			if (*bBounce && *elasticity > 0.0f)  
+			{  
+				if (dot(previousNormal, hitNormal) > 0.0f)  
+				{  
+					float f = dot(velocity, hitNormal);  
+					velocity = (velocity - f * hitNormal) * (1.0f - *elasticity);  
+					  
+					if (dot(velocity, hitNormal) <= 0.0f)  
+					{  
+						velocity = vec3(0, 0, 0);  
+						bHit = true;  
+					}  
+				}  
+				else  
+				{  
+					vec3 crossProduct = cross(previousNormal, hitNormal);  
+					vec3 edgeNormal = normalize(crossProduct);  
+					float scale = (1.0f - *elasticity) * dot(edgeNormal, velocity);  
+					velocity = edgeNormal * scale;  
+					  
+					if (dot(velocity, previousNormal) < 0.0f)  
+					{  
+						velocity = velocity * -1.0f;  
+					}  
+				}  
+				  
+				pos = hitLocation;   
+				previousNormal = hitNormal; 
+			}  
+			else {  
+				bHit = true;  
+				pos = hitLocation;  
+			}  
+		}  
+  
+		if (length(velocity) < *landingSpeed)  
+		{  
+			bHit = true;  
+		}  
+  
+		timeElapsed += *granularity;  
+	}  
+  
+	finalLocation = pos;  
+	ReturnValue = timeElapsed;  
+}
+
+void NActor::RandomBiasedRotation(
+	UObject* Self,
+	int centralYaw,
+	float yawDistribution,
+	int centralPitch,
+	float pitchDistribution,
+	Rotator& ReturnValue)
+{
+	if (yawDistribution < 0.0f) yawDistribution = 0.0f;
+	if (yawDistribution > 1.0f) yawDistribution = 1.0f;
+
+	if (pitchDistribution < 0.0f) pitchDistribution = 0.0f;
+	if (pitchDistribution > 1.0f) pitchDistribution = 1.0f;
+
+	float rYaw = (float)std::rand() * 3.051851e-05f;
+	rYaw = rYaw * 2.0f - 1.0f;
+
+	float rPitch = (float)std::rand() * 3.051851e-05f;
+	rPitch = rPitch * 2.0f - 1.0f;
+
+	float signYaw = (rYaw < 0.f) ? -1.f : 1.f;
+	float absYaw = std::fabs(rYaw);
+	float kYaw = 1.0f - yawDistribution;
+	float biasedYaw = absYaw / (kYaw + (1.0f - kYaw) * absYaw);
+	biasedYaw *= signYaw;
+
+	float signPitch = (rPitch < 0.f) ? -1.f : 1.f;
+	float absPitch = std::fabs(rPitch);
+	float kPitch = 1.0f - pitchDistribution;
+	float biasedPitch = absPitch / (kPitch + (1.0f - kPitch) * absPitch);
+	biasedPitch *= signPitch;
+
+	ReturnValue.Yaw   = centralYaw + (int)biasedYaw;
+	ReturnValue.Pitch = centralPitch + (int)biasedPitch;
+	ReturnValue.Roll  = 0;
+}
+
+void NActor::SetInstantMusicVolume(UObject* Self, uint8_t newMusicVolume)
+{
+	// Deus Ex
+	engine->audiodev->GetDevice()->SetMusicVolume(static_cast<float>(newMusicVolume) / 255.f);
+}
+
+void NActor::SetInstantSoundVolume(UObject* Self, uint8_t newSoundVolume)
+{
+	// Deus Ex
+	engine->audiodev->GetDevice()->SetSoundVolume(static_cast<float>(newSoundVolume) / 255.f);
+}
+
+void NActor::SetInstantSpeechVolume(UObject* Self, uint8_t newSpeechVolume)
+{
+	LogUnimplemented("Actor.SetInstantSpeechVolume");
+}
+
+void NActor::StopSound_Deus(UObject* Self, int Id)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	engine->audiodev->StopSound(SelfActor, Id);
+}
+
+void NActor::TweenBlendAnim(UObject* Self, const NameString& Sequence, float Time, std::optional<int> BlendSlot)
+{
+	UObject::Cast<UActor>(Self)->TweenBlendAnim(Sequence, Time, BlendSlot ? *BlendSlot : 0);
+}
+
+void NActor::PlayAnim_HP(UObject* Self, const NameString& Sequence, std::optional<float> Rate, std::optional<float> TweenTime, std::optional<uint8_t> Type, std::optional<NameString> RootBone)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	SelfActor->PlayAnim_HP(Sequence, Rate, TweenTime, Type.has_value() ? std::optional<EAnimType>((EAnimType)Type.value()) : std::optional<EAnimType>(), RootBone);
+}
+
+void NActor::LoopAnim_HP(UObject* Self, const NameString& Sequence, std::optional<float> Rate, std::optional<float> TweenTime, std::optional<float> MinRate, std::optional<uint8_t> Type, std::optional<NameString> RootBone)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	SelfActor->LoopAnim_HP(Sequence, Rate, TweenTime, MinRate, Type.has_value() ? std::optional<EAnimType>((EAnimType)Type.value()) : std::optional<EAnimType>(), RootBone);
+}
+
+void NActor::IsAnimating_HP(UObject* Self, std::optional<NameString> RootBone, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->IsAnimating_HP(RootBone);
+}
+
+void NActor::FinishAnim_HP(UObject* Self, std::optional<NameString> RootBone)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	SelfActor->FinishAnim_HP(RootBone);
+}
+
+void NActor::GetWorldCollisionBox(UObject* Self, std::optional<bool> bVisual, BoundingBox& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->GetWorldCollisionBox(bVisual.has_value() ? bVisual.value() : false);
+}
+
+void NActor::GetRenderExtent(UObject* Self, vec3& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->GetRenderExtent();
+}
+
+void NActor::CreateAnimChannel(UObject* Self, UObject* NewClass, uint8_t Type, const NameString& RootBone, std::optional<bool> bTransient, UObject*& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->CreateAnimChannel(UObject::Cast<UClass>(NewClass), (EAnimType)Type, RootBone, bTransient.has_value() ? bTransient.value() : false);
+}
+
+void NActor::BoneNumber(UObject* Self, const NameString& Bone, int& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->BoneNumber(Bone);
+}
+
+void NActor::BoneName(UObject* Self, int Bone, NameString& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->BoneName(Bone);
+}
+
+void NActor::BonePos(UObject* Self, const NameString& Bone, vec3& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->BonePos(Bone);
+}
+
+void NActor::CreateTextureFromScreenShot(UObject* Self, UObject* vport, UObject*& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->CreateTextureFromScreenShot(UObject::Cast<UViewport>(vport));
+}
+
+void NActor::CreateTextureFromBMP(UObject* Self, const std::string& name, const std::string& filename, UObject*& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->CreateTextureFromBMP(name, filename);
+}
+
+void NActor::SaveObjectAsFile(UObject* Self, const std::string& dir, UObject* object, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->SaveObjectAsFile(dir, object);
+}
+
+void NActor::LoadObjectAsFile(UObject* Self, const std::string& dir, UObject* object, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->LoadObjectAsFile(dir, object);
+}
+
+void NActor::SaveGameSaveInfo(UObject* Self, const std::string& dir, UObject* object, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->SaveGameSaveInfo(dir, object);
+}
+
+void NActor::LoadGameSaveInfo(UObject* Self, const std::string& dir, UObject* object, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->LoadGameSaveInfo(dir, object);
+}
+
+void NActor::IsOSVer2kOrXP(UObject* Self, BitfieldBool& ReturnValue)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	ReturnValue = SelfActor->IsOSVer2kOrXP();
+}
+
+void NActor::StopSound_HP(UObject* Self, std::optional<UObject*> Sound, std::optional<uint8_t> Slot)
+{
+	UActor* SelfActor = UObject::Cast<UActor>(Self);
+	LogUnimplemented("Actor.StopSound");
+	// engine->audiodev->StopSound(SelfActor, Sound, Slot);
+}

@@ -1,0 +1,66 @@
+
+#include "Precomp.h"
+#include "NLevelInfo.h"
+#include "VM/NativeFunc.h"
+#include "Packages/Engine/Actors/Info/ULevelInfo.h"
+#include "Utils/Logger.h"
+#include "Engine.h"
+
+void NLevelInfo::RegisterFunctions()
+{
+	RegisterVMNativeFunc_1("LevelInfo", "GetAddressURL", &NLevelInfo::GetAddressURL, 0);
+	RegisterVMNativeFunc_1("LevelInfo", "GetLocalURL", &NLevelInfo::GetLocalURL, 0);
+	RegisterVMNativeFunc_0("LevelInfo", "InitEventManager", &NLevelInfo::InitEventManager, 650);
+	if (engine->LaunchInfo.IsUnreal1_227())
+	{
+		if (engine->LaunchInfo.IsUnreal1_227k())
+			RegisterVMNativeFunc_4("LevelInfo", "GetLocZone", &NLevelInfo::GetLocZone_U227k, 1709);
+		else
+			RegisterVMNativeFunc_3("LevelInfo", "GetLocZone", &NLevelInfo::GetLocZone_U227, 1709);
+		RegisterVMNativeFunc_3("LevelInfo", "AllocateObj", &NLevelInfo::AllocateObj_U227, 1710);
+		RegisterVMNativeFunc_2("LevelInfo", "FreeObject", &NLevelInfo::FreeObject_U227, 1711);
+	}
+}
+
+void NLevelInfo::AllocateObj_U227(UObject* Self, UObject* ObjClass, UObject*& ReturnValue)
+{
+	LogUnimplemented("LevelInfo.AllocateObj() [U227]");
+	ReturnValue = nullptr;
+}
+
+void NLevelInfo::FreeObject_U227(UObject* Self, UObject* Obj)
+{
+	LogUnimplemented("LevelInfo.FreeObject() [U227]");
+}
+
+void NLevelInfo::GetAddressURL(UObject* Self, std::string& ReturnValue)
+{
+	ReturnValue = UObject::Cast<ULevelInfo>(Self)->URL.GetAddressURL();
+}
+
+void NLevelInfo::GetLocalURL(UObject* Self, std::string& ReturnValue)
+{
+	ReturnValue = UObject::Cast<ULevelInfo>(Self)->URL.ToString();
+}
+
+void NLevelInfo::GetLocZone_U227(UObject* Self, const vec3& Pos, PointRegion& ReturnValue)
+{
+	ReturnValue = UObject::Cast<ULevelInfo>(Self)->GetLocZone(Pos, std::nullopt);
+}
+
+void NLevelInfo::GetLocZone_U227k(UObject* Self, const vec3& Pos, std::optional<UObject*> InActor, PointRegion& ReturnValue)
+{
+	if (InActor)
+	{
+		auto Actor = UObject::Cast<UActor>(*InActor);
+		ReturnValue = UObject::Cast<ULevelInfo>(Self)->GetLocZone(Pos, Actor);
+	}
+	else
+		ReturnValue = UObject::Cast<ULevelInfo>(Self)->GetLocZone(Pos, std::nullopt);
+}
+
+void NLevelInfo::InitEventManager(UObject* Self)
+{
+	LogUnimplemented("LevelInfo.InitEventManager");
+	// Deus Ex
+}

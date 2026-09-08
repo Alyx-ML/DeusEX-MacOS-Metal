@@ -1,0 +1,37 @@
+#pragma once
+
+#include "SceneTextures.h"
+
+struct TextureInfo;
+class VulkanRenderDevice;
+class CachedTexture;
+
+class TextureManager
+{
+public:
+	TextureManager(VulkanRenderDevice* renderer);
+	~TextureManager();
+
+	void UpdateTextureRect(TextureInfo* info, int x, int y, int w, int h);
+	CachedTexture* GetTexture(TextureInfo* info, bool masked);
+
+	void ClearCache();
+	void ClearAllBindlessIndexes();
+
+	std::unique_ptr<VulkanImage> NullTexture;
+	std::unique_ptr<VulkanImageView> NullTextureView;
+
+	std::unique_ptr<VulkanImage> DitherImage;
+	std::unique_ptr<VulkanImageView> DitherImageView;
+
+	std::unique_ptr<SceneTextures> Scene;
+
+	int GetTexturesInCache() { return (int)(TextureCache[0].size() + TextureCache[1].size()); }
+
+private:
+	void CreateNullTexture();
+	void CreateDitherTexture();
+
+	VulkanRenderDevice* renderer = nullptr;
+	std::unordered_map<uint64_t, std::unique_ptr<CachedTexture>> TextureCache[2];
+};

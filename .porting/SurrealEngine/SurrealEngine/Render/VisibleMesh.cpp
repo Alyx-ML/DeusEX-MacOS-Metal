@@ -1,0 +1,1154 @@
+
+#include "Precomp.h"
+#include "VisibleMesh.h"
+#include "VisibleFrame.h"
+#include "RenderSubsystem.h"
+#include "RenderDevice/RenderDevice.h"
+#include "Engine.h"
+#include "VM/Frame.h"
+#include "Packages/Engine/Actors/Pawn/UPawn.h"
+#include "Packages/Engine/Actors/Inventory/UWeapon.h"
+#include "Packages/Engine/Actors/Info/ULevelInfo.h"
+#include "Packages/Engine/Actors/NavigationPoint/UNavigationPoint.h"
+#include "Packages/Engine/Resources/Mesh/USkeletalMesh.h"
+#include "Packages/Engine/Resources/Level/UModel.h"
+
+bool VisibleMesh::DrawMesh(VisibleFrame* frame, UActor* actor, bool wireframe, bool translucentPass)
+{
+	UMesh* mesh = actor->Mesh();
+	if (!mesh)
+		return false;
+
+	engine->render->Stats.Actors++;
+	engine->Level->Light.UpdateLightList(actor);
+
+	// DrawDebugInfo(frame, actor);
+
+	mat4 objectToWorld = mat4::translate(actor->Location() + actor->PrePivot()) * Coords::Rotation(actor->Rotation()).ToMatrix() * mat4::scale(actor->DrawScale());
+	mat4 meshToWorld = objectToWorld * mesh->meshToObject;
+
+	// Note: using transpose seems to be wrong here
+	mat3 meshNormalToWorld = mat3(Coords::Rotation(actor->Rotation()).ToMatrix() * Coords::Rotation(mesh->RotOrigin).ToMatrix());
+
+	bool needsTranslucentPass = DrawMeshAtLocation(frame, actor, actor, mesh, meshToWorld, meshNormalToWorld, translucentPass);
+
+	// Weapon attachment drawing:
+	if (UPawn* pawn = UObject::TryCast<UPawn>(actor))
+	{
+		ULodMesh* pawnLodMesh = UObject::TryCast<ULodMesh>(mesh);
+		UWeapon* weapon = pawn ? pawn->Weapon() : nullptr;
+		UMesh* weaponMesh = weapon ? weapon->ThirdPersonMesh() : nullptr;
+		if (weaponMesh && pawnLodMesh && attachmentTris.size() >= 3)
+		{
+			// Find attachment triangle location in the world:
+			const vec3& v0 = attachmentTris[0];
+			const vec3& v1 = attachmentTris[1];
+			const vec3& v2 = attachmentTris[2];
+
+			// Create a coordinate space converting from weapon to the world:
+			Coords attachment;
+			attachment.XAxis = normalize(v1 - v0);
+			attachment.YAxis = normalize(cross(attachment.XAxis, v2 - v0));
+			attachment.ZAxis = normalize(cross(attachment.XAxis, attachment.YAxis));
+			attachment.Origin = -(v0 + v2) * 0.5f;
+
+			// Place the weapon in this coordinate space:
+			mat4 weaponMeshToWorld = attachment.ToMatrix() * mat4::scale(weapon->ThirdPersonScale()) * weaponMesh->meshToObject;
+			mat3 weaponNormalToWorld = mat3::transpose(mat3(weaponMeshToWorld));
+			needsTranslucentPass = DrawMeshAtLocation(frame, weapon, actor, weaponMesh, weaponMeshToWorld, weaponNormalToWorld, translucentPass) || needsTranslucentPass;
+		}
+	}
+
+	return needsTranslucentPass;
+}
+
+bool VisibleMesh::DrawMeshAtLocation(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, UMesh* mesh, const mat4& meshToWorld, const mat3& meshNormalToWorld, bool translucentPass)
+{
+	if (auto skeletalmesh = UObject::TryCast<USkeletalMesh>(mesh))
+	{
+		return DrawSkeletalMesh(frame, actor, lightLocationActor, skeletalmesh, meshToWorld, meshNormalToWorld, translucentPass);
+	}
+	else if (auto lodmesh = UObject::TryCast<ULodMesh>(mesh))
+	{
+		if (engine->LaunchInfo.IsDeusEx())
+			return DrawLodMeshDX(frame, actor, lightLocationActor, lodmesh, meshToWorld, meshNormalToWorld, translucentPass);
+		else
+			return DrawLodMesh(frame, actor, lightLocationActor, lodmesh, meshToWorld, meshNormalToWorld, translucentPass);
+	}
+	else
+	{
+		if (engine->LaunchInfo.IsDeusEx())
+			return DrawMeshDX(frame, actor, lightLocationActor, mesh, meshToWorld, meshNormalToWorld, translucentPass);
+		else
+			return DrawMesh(frame, actor, lightLocationActor, mesh, meshToWorld, meshNormalToWorld, translucentPass);
+	}
+}
+
+bool VisibleMesh::DrawMesh(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, UMesh* mesh, const mat4& ObjectToWorld, const mat3& ObjectNormalToWorld, bool translucentPass)
+{
+	auto lightsys = &engine->Level->Light;
+	float fatness = actor->Fatness() / 16.0f - 8.0f;
+
+	UActor* animSource = actor;
+	if (engine->LaunchInfo.ue1Version > 219 && actor->bAnimByOwner() && actor->Owner())
+		animSource = actor->Owner();
+
+	MeshAnimSeq* seq = mesh->GetSequence(animSource->AnimSequence());
+	if (!seq)
+		return false;
+	float animFrame = animSource->AnimFrame() * seq->NumFrames;
+
+	int vertexOffsets[3];
+	float t0, t1;
+
+	if (animFrame >= 0.0f)
+	{
+		int frame0 = (int)animFrame;
+		int frame1 = frame0 + 1;
+		frame0 = frame0 % seq->NumFrames;
+		frame1 = frame1 % seq->NumFrames;
+		t0 = animFrame - (float)frame0;
+		t1 = 0.0f;
+		vertexOffsets[0] = (seq->StartFrame + frame0) * mesh->FrameVerts;
+		vertexOffsets[1] = (seq->StartFrame + frame1) * mesh->FrameVerts;
+		vertexOffsets[2] = 0;
+	}
+	else // Tween from old animation
+	{
+		t0 = animSource->TweenFromAnimFrame.T;
+		t1 = clamp(animFrame + 1.0f, 0.0f, 1.0f);
+		vertexOffsets[0] = animSource->TweenFromAnimFrame.V0;
+		vertexOffsets[1] = animSource->TweenFromAnimFrame.V1;
+		vertexOffsets[2] = seq->StartFrame * mesh->FrameVerts;
+	}
+
+	SetupMeshTextures(actor, mesh);
+
+	uint32_t polyflags = 0;
+	switch (actor->Style())
+	{
+	default: break;
+	case STY_None: break;
+	case STY_AlphaBlend: break;
+	case STY_Masked: polyflags |= PF_Masked; break;
+	case STY_Translucent: polyflags |= PF_Translucent; break;
+	case STY_Modulated: polyflags |= PF_Modulated; break;
+	}
+	if (actor->bNoSmooth()) polyflags |= PF_NoSmooth;
+	if (actor->bSelected()) polyflags |= PF_Selected;
+	if (actor->bMeshEnviroMap()) polyflags |= PF_Environment;
+	if (actor->bMeshCurvy()) polyflags |= PF_Flat;
+	if (actor->bNoSmooth()) polyflags |= PF_NoSmooth;
+	if (actor->bUnlit() || actor->Region().ZoneNumber == 0) polyflags |= PF_Unlit;
+
+	bool needTranslucentPass = false;
+
+	UZoneInfo* zoneActor = engine->GetZoneActor(actor->Region().ZoneNumber);
+
+	VertexLight vertexLight;
+	lightsys->InitVertexLight(vertexLight, lightLocationActor, zoneActor);
+
+	GouraudVertex vertices[3];
+	for (const MeshTri& tri : mesh->Tris)
+	{
+		if (tri.TextureIndex >= mesh->Textures.size())
+			continue;
+
+		uint32_t renderflags = tri.PolyFlags | polyflags;
+		UTexture* tex = (renderflags & PF_Environment) ? engine->render->Mesh.envmap : engine->render->Mesh.textures[tri.TextureIndex];
+		if (!tex)
+			continue;
+
+		bool isTranslucent = (renderflags & (PF_Translucent | PF_Modulated | PF_Highlighted)) != 0;
+		if (isTranslucent && !translucentPass)
+		{
+			needTranslucentPass = true;
+			continue;
+		}
+		else if (!isTranslucent && translucentPass)
+		{
+			// We already drew the opaque surface
+			continue;
+		}
+
+		engine->render->UpdateTexture(tex);
+
+		TextureInfo texinfo;
+		engine->render->UpdateTextureInfo(texinfo, tex);
+
+		float uscale = (tex ? tex->UsedMipmaps.front().Width : 256) * (1.0f / 255.0f);
+		float vscale = (tex ? tex->UsedMipmaps.front().Height : 256) * (1.0f / 255.0f);
+
+		vec3 normals[3];
+		for (int i = 0; i < 3; i++)
+		{
+			size_t vindex = tri.Indices[i];
+			size_t vindex0 = vindex + vertexOffsets[0];
+			size_t vindex1 = vindex + vertexOffsets[1];
+
+			if (vindex0 >= mesh->Verts.size() || vindex1 >= mesh->Verts.size())
+				return false; // out of bounds
+
+			const vec3& v0 = mesh->Verts[vindex0];
+			const vec3& v1 = mesh->Verts[vindex1];
+			const vec3& n0 = mesh->Normals[vindex0];
+			const vec3& n1 = mesh->Normals[vindex1];
+			vec3 vertex = mix(v0 + n0 * fatness, v1 + n1 * fatness, t0);
+			vec3 normal = mix(n0, n1, t0);
+			if (t1 != 0.0f)
+			{
+				size_t vindex2 = vindex + vertexOffsets[2];
+				if (vindex2 >= mesh->Verts.size())
+					return false; // out of bounds
+
+				const vec3& v2 = mesh->Verts[vindex2];
+				const vec3& n2 = mesh->Normals[vindex2];
+				vertex = mix(vertex, v2 + n2 * fatness, t1);
+				normal = mix(normal, n2, t1);
+			}
+
+			vertices[i].Point = (ObjectToWorld * vec4(vertex, 1.0f)).xyz();
+			vertices[i].UV = { tri.UV[i].x * uscale, tri.UV[i].y * vscale };
+			normals[i] = normalize(ObjectNormalToWorld * normal);
+		}
+
+		if (renderflags & PF_Environment)
+		{
+			mat3 rotmat = mat3(frame->Frame.WorldToView * frame->Frame.ObjectToWorld);
+			for (int i = 0; i < 3; i++)
+			{
+				vec3 v = normalize(vertices[i].Point);
+				vec3 p = rotmat * reflect(v, normals[i]);
+				vertices[i].UV = { (p.x + 1.0f) * 128.0f * uscale, (p.y + 1.0f) * 128.0f * vscale };
+			}
+		}
+
+		for (int i = 0; i < 3; i++)
+		{
+			vertices[i].Light = vertexLight.GetVertexLight(vertices[i].Point, normals[i], !!(renderflags & PF_Unlit), !!(renderflags & PF_TwoSided));
+			vertices[i].Fog = vertexLight.GetVertexFog(vertices[i].Point);
+		}
+
+		renderflags |= PF_RenderFog;
+
+		frame->Device->DrawGouraudPolygon(&frame->Frame, texinfo, vertices, 3, renderflags);
+	}
+	return needTranslucentPass;
+}
+
+bool VisibleMesh::DrawLodMesh(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, ULodMesh* mesh, const mat4& ObjectToWorld, const mat3& ObjectNormalToWorld, bool translucentPass)
+{
+	UActor* animSource = actor;
+	if (engine->LaunchInfo.ue1Version > 219 && actor->bAnimByOwner() && actor->Owner())
+		animSource = actor->Owner();
+
+	MeshAnimSeq* seq = mesh->GetSequence(animSource->AnimSequence());
+	if (!seq)
+		return false;
+	float animFrame = animSource->AnimFrame() * seq->NumFrames;
+
+	int vertexOffsets[3];
+	float t0, t1;
+
+	if (animFrame >= 0.0f)
+	{
+		int frame0 = (int)animFrame;
+		int frame1 = frame0 + 1;
+		frame0 = frame0 % seq->NumFrames;
+		frame1 = frame1 % seq->NumFrames;
+		t0 = animFrame - (float)frame0;
+		t1 = 0.0f;
+		vertexOffsets[0] = (seq->StartFrame + frame0) * mesh->FrameVerts;
+		vertexOffsets[1] = (seq->StartFrame + frame1) * mesh->FrameVerts;
+		vertexOffsets[2] = 0;
+	}
+	else // Tween from old animation
+	{
+		t0 = animSource->TweenFromAnimFrame.T;
+		t1 = clamp(animFrame + 1.0f, 0.0f, 1.0f);
+		vertexOffsets[0] = animSource->TweenFromAnimFrame.V0;
+		vertexOffsets[1] = animSource->TweenFromAnimFrame.V1;
+		vertexOffsets[2] = seq->StartFrame * mesh->FrameVerts;
+	}
+
+	SetupLodMeshTextures(actor, mesh);
+	FindAttachmentPoints(mesh, ObjectToWorld, vertexOffsets, t0, t1);
+	return DrawLodMeshFace(frame, actor, lightLocationActor, mesh, mesh->Faces, ObjectToWorld, ObjectNormalToWorld, mesh->SpecialVerts, vertexOffsets, t0, t1, translucentPass);
+}
+
+void VisibleMesh::SetupMeshTextures(UActor* actor, UMesh* mesh)
+{
+	if (engine->render->Mesh.textures.size() < mesh->Textures.size())
+		engine->render->Mesh.textures.resize(mesh->Textures.size());
+
+	engine->render->Mesh.envmap = nullptr;
+
+	for (int i = 0; i < (int)mesh->Textures.size(); i++)
+	{
+		// Multiskins always take precedent
+		UTexture* tex = actor->GetMultiskin(i);
+		if (!tex)
+		{
+			// Skin acts as MultiSkin[0], unless the mesh group has no texture
+			if (!mesh->Textures[i] || i == 0)
+				tex = actor->Skin();
+
+			// Check mesh skin next
+			if (!tex)
+				tex = mesh->Textures[i];
+
+			// Check texture
+			if (!tex)
+				tex = actor->Texture();
+
+			// Get the last multiskin
+			if (!tex)
+			{
+				for (int j = 0; j < mesh->Textures.size(); j++)
+				{
+					UTexture* multiskin = actor->GetMultiskin(j);
+					if (multiskin)
+						tex = multiskin;
+				}
+			}
+		}
+
+		//if (tex)
+		//{
+		//	tex = tex->GetAnimTexture();
+		//	Mesh.envmap = tex;
+		//}
+
+		engine->render->Mesh.textures[i] = tex;
+	}
+
+	if (actor->Texture())
+	{
+		engine->render->Mesh.envmap = actor->Texture();
+	}
+	else if (actor->Region().Zone && actor->Region().Zone->EnvironmentMap())
+	{
+		engine->render->Mesh.envmap = actor->Region().Zone->EnvironmentMap();
+	}
+	else if (actor->Level()->EnvironmentMap())
+	{
+		engine->render->Mesh.envmap = actor->Level()->EnvironmentMap();
+	}
+}
+
+void VisibleMesh::SetupLodMeshTextures(UActor* actor, ULodMesh* mesh)
+{
+	if (engine->render->Mesh.textures.size() < mesh->Textures.size())
+		engine->render->Mesh.textures.resize(mesh->Textures.size());
+
+	engine->render->Mesh.envmap = nullptr;
+
+	for (int i = 0; i < (int)mesh->Textures.size(); i++)
+	{
+		// Multiskins always take precedent
+		UTexture* tex = actor->GetMultiskin(i);
+		if (!tex)
+		{
+			// Skin acts as MultiSkin[0], unless the mesh group has no texture
+			if (!mesh->Textures[i] || i == 0)
+				tex = actor->Skin();
+
+			// Check mesh skin next
+			if (!tex)
+				tex = mesh->Textures[i];
+
+			// Check texture
+			if (!tex)
+				tex = actor->Texture();
+
+			// Get the last multiskin
+			if (!tex)
+			{
+				for (int j = 0; j < mesh->Materials.size(); j++)
+				{
+					UTexture* multiskin = actor->GetMultiskin(j);
+					if (multiskin)
+						tex = multiskin;
+				}
+			}
+		}
+
+		//if (tex)
+		//{
+		//	tex = tex->GetAnimTexture();
+		//	Mesh.envmap = tex;
+		//}
+
+		engine->render->Mesh.textures[i] = tex;
+	}
+
+	if (actor->Texture())
+	{
+		engine->render->Mesh.envmap = actor->Texture();
+	}
+	else if (actor->Region().Zone && actor->Region().Zone->EnvironmentMap())
+	{
+		engine->render->Mesh.envmap = actor->Region().Zone->EnvironmentMap();
+	}
+	else if (actor->Level()->EnvironmentMap())
+	{
+		engine->render->Mesh.envmap = actor->Level()->EnvironmentMap();
+	}
+}
+
+void VisibleMesh::FindAttachmentPoints(ULodMesh* mesh, const mat4& ObjectToWorld, const int* vertexOffsets, float t0, float t1)
+{
+	for (const MeshFace& face : mesh->SpecialFaces)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			size_t vbase = (size_t)face.Indices[i];
+			size_t vindex = mesh->ReMapAnimVerts.empty() ? vbase : mesh->ReMapAnimVerts[vbase];
+			size_t vindex0 = vindex + vertexOffsets[0];
+			size_t vindex1 = vindex + vertexOffsets[1];
+
+			if (vindex0 >= mesh->Verts.size() || vindex1 >= mesh->Verts.size())
+				return; // out of bounds
+
+			const vec3& v0 = mesh->Verts[vindex0];
+			const vec3& v1 = mesh->Verts[vindex1];
+			vec3 vertex = mix(v0, v1, t0);
+			if (t1 != 0.0f)
+			{
+				size_t vindex2 = vindex + vertexOffsets[2];
+				if (vindex2 >= mesh->Verts.size())
+					return; // out of bounds
+
+				const vec3& v2 = mesh->Verts[vindex2];
+				vertex = mix(vertex, v2, t1);
+			}
+
+			attachmentTris.push_back((ObjectToWorld * vec4(vertex, 1.0f)).xyz());
+		}
+	}
+}
+
+bool VisibleMesh::DrawLodMeshFace(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, ULodMesh* mesh, const Array<MeshFace>& faces, const mat4& ObjectToWorld, const mat3& ObjectNormalToWorld, int baseVertexOffset, const int* vertexOffsets, float t0, float t1, bool translucentPass)
+{
+	auto lightsys = &engine->Level->Light;
+	float fatness = actor->Fatness() / 16.0f - 8.0f;
+
+	uint32_t polyFlags = 0;
+	switch (actor->Style())
+	{
+	default: break;
+	case STY_None: break;
+	case STY_AlphaBlend: break;
+	case STY_Masked: polyFlags |= PF_Masked; break;
+	case STY_Translucent: polyFlags |= PF_Translucent; break;
+	case STY_Modulated: polyFlags |= PF_Modulated; break;
+	}
+	if (actor->bNoSmooth()) polyFlags |= PF_NoSmooth;
+	if (actor->bSelected()) polyFlags |= PF_Selected;
+	if (actor->bMeshEnviroMap()) polyFlags |= PF_Environment;
+	if (actor->bMeshCurvy()) polyFlags |= PF_Flat;
+	if (actor->bNoSmooth()) polyFlags |= PF_NoSmooth;
+	if (actor->bUnlit() || actor->Region().ZoneNumber == 0) polyFlags |= PF_Unlit;
+
+	UZoneInfo* zoneActor = engine->GetZoneActor(actor->Region().ZoneNumber);
+
+	VertexLight vertexLight;
+	lightsys->InitVertexLight(vertexLight, lightLocationActor, zoneActor);
+
+	bool needTranslucentPass = false;
+
+	GouraudVertex vertices[3];
+	for (const MeshFace& face : faces)
+	{
+		if (face.MaterialIndex >= mesh->Materials.size())
+			continue;
+
+		const MeshMaterial& material = mesh->Materials[face.MaterialIndex];
+
+		if (material.PolyFlags & PF_Invisible)
+			continue;
+
+		uint32_t renderflags = material.PolyFlags | polyFlags;
+		UTexture* tex = (renderflags & PF_Environment) ? engine->render->Mesh.envmap : engine->render->Mesh.textures[material.TextureIndex];
+
+		// skip if no texture
+		if (!tex)
+			continue;
+
+		bool isTranslucent = (renderflags & (PF_Translucent | PF_Modulated | PF_Highlighted)) != 0;
+		if (isTranslucent && !translucentPass)
+		{
+			needTranslucentPass = true;
+			continue;
+		}
+		else if (!isTranslucent && translucentPass)
+		{
+			// We already drew the opaque surface
+			continue;
+		}
+
+		engine->render->UpdateTexture(tex);
+
+		TextureInfo texinfo;
+		engine->render->UpdateTextureInfo(texinfo, tex);
+
+		float uscale = (texinfo.Texture ? texinfo.Texture->UsedMipmaps.front().Width : 256) * (1.0f / 255.0f);
+		float vscale = (texinfo.Texture ? texinfo.Texture->UsedMipmaps.front().Height : 256) * (1.0f / 255.0f);
+
+		vec3 normals[3];
+		for (int i = 0; i < 3; i++)
+		{
+			const MeshWedge& wedge = mesh->Wedges[face.Indices[i]];
+
+			size_t vbase = (size_t)wedge.Vertex + baseVertexOffset;
+			size_t vindex = mesh->ReMapAnimVerts.empty() ? vbase : mesh->ReMapAnimVerts[vbase];
+			size_t vindex0 = vindex + vertexOffsets[0];
+			size_t vindex1 = vindex + vertexOffsets[1];
+
+			if (vindex0 >= mesh->Verts.size() || vindex1 >= mesh->Verts.size())
+				return false; // out of bounds
+
+			const vec3& v0 = mesh->Verts[vindex0];
+			const vec3& v1 = mesh->Verts[vindex1];
+			const vec3& n0 = mesh->Normals[vindex0];
+			const vec3& n1 = mesh->Normals[vindex1];
+			vec3 vertex = mix(v0 + n0 * fatness, v1 + n1 * fatness, t0);
+			vec3 normal = mix(n0, n1, t0);
+			if (t1 != 0.0f)
+			{
+				size_t vindex2 = vindex + vertexOffsets[2];
+				if (vindex2 >= mesh->Verts.size())
+					return false; // out of bounds
+
+				const vec3& v2 = mesh->Verts[vindex2];
+				const vec3& n2 = mesh->Normals[vindex2];
+				vertex = mix(vertex, v2 + n2 * fatness, t1);
+				normal = mix(normal, n2, t1);
+			}
+
+			vertices[i].Point = (ObjectToWorld * vec4(vertex, 1.0f)).xyz();
+			vertices[i].UV = { wedge.U * uscale, wedge.V * vscale };
+			normals[i] = normalize(ObjectNormalToWorld * normal);
+		}
+
+		if (renderflags & PF_Environment)
+		{
+			mat3 rotmat = mat3(frame->Frame.WorldToView * frame->Frame.ObjectToWorld);
+			for (int i = 0; i < 3; i++)
+			{
+				vec3 v = normalize(vertices[i].Point);
+				vec3 p = rotmat * reflect(v, normals[i]);
+				vertices[i].UV = { (p.x + 1.0f) * 128.0f * uscale, (p.y + 1.0f) * 128.0f * vscale };
+			}
+		}
+
+		for (int i = 0; i < 3; i++)
+		{
+			vertices[i].Light = vertexLight.GetVertexLight(vertices[i].Point, normals[i], !!(renderflags & PF_Unlit), !!(renderflags & PF_TwoSided));
+			vertices[i].Fog = vertexLight.GetVertexFog(vertices[i].Point);
+		}
+
+		renderflags |= PF_RenderFog;
+
+		frame->Device->DrawGouraudPolygon(&frame->Frame, texinfo, vertices, 3, renderflags);
+	}
+
+	return needTranslucentPass;
+}
+
+bool VisibleMesh::DrawSkeletalMesh(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, USkeletalMesh* mesh, const mat4& ObjectToWorld, const mat3& ObjectNormalToWorld, bool translucentPass)
+{
+	return DrawLodMesh(frame, actor, lightLocationActor, mesh, ObjectToWorld, ObjectNormalToWorld, translucentPass);
+}
+
+bool VisibleMesh::DrawMeshDX(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, UMesh* mesh, const mat4& ObjectToWorld, const mat3& ObjectNormalToWorld, bool translucentPass)
+{
+	auto lightsys = &engine->Level->Light;
+	float fatness = actor->Fatness() / 16.0f - 8.0f;
+
+	UActor* animSource = actor;
+	if (engine->LaunchInfo.ue1Version > 219 && actor->bAnimByOwner() && actor->Owner())
+		animSource = actor->Owner();
+
+	MeshAnimSeq* seq = mesh->GetSequence(animSource->AnimSequence());
+	if (!seq)
+		return false;
+	float animFrame = animSource->AnimFrame() * seq->NumFrames;
+
+	int vertexOffsets[3];
+	float t0, t1;
+
+	if (animFrame >= 0.0f)
+	{
+		int frame0 = (int)animFrame;
+		int frame1 = frame0 + 1;
+		frame0 = frame0 % seq->NumFrames;
+		frame1 = frame1 % seq->NumFrames;
+		t0 = animFrame - (float)frame0;
+		t1 = 0.0f;
+		vertexOffsets[0] = (seq->StartFrame + frame0) * mesh->FrameVerts;
+		vertexOffsets[1] = (seq->StartFrame + frame1) * mesh->FrameVerts;
+		vertexOffsets[2] = 0;
+	}
+	else // Tween from old animation
+	{
+		t0 = animSource->TweenFromAnimFrame.T;
+		t1 = clamp(animFrame + 1.0f, 0.0f, 1.0f);
+		vertexOffsets[0] = animSource->TweenFromAnimFrame.V0;
+		vertexOffsets[1] = animSource->TweenFromAnimFrame.V1;
+		vertexOffsets[2] = seq->StartFrame * mesh->FrameVerts;
+	}
+
+	BlendInfo blends[4];
+	int blendCount = 0;
+
+	for (int i = 0; i < 4; i++)
+	{
+		if (animSource->BlendAnimSequence()[i].IsNone())
+			continue;
+
+		MeshAnimSeq* seq = mesh->GetSequence(animSource->BlendAnimSequence()[i]);
+		if (!seq || seq->Name != animSource->BlendAnimSequence()[i])
+			continue;
+
+		float frame = animSource->BlendAnimFrame()[i] * seq->NumFrames;
+
+		BlendInfo& b = blends[blendCount++];
+
+		if (frame >= 0.0f)
+		{
+			int f0 = (int)frame;
+			int f1 = f0 + 1;
+
+			f0 %= seq->NumFrames;
+			f1 %= seq->NumFrames;
+
+			b.t0 = frame - f0;
+			b.t1 = 0.0f;
+
+			b.offsets[0] = (seq->StartFrame + f0) * mesh->FrameVerts;
+			b.offsets[1] = (seq->StartFrame + f1) * mesh->FrameVerts;
+			b.offsets[2] = 0;
+
+			b.weight = 1.0f;
+		}
+		else // Tween from old blend state to new frame 0
+		{
+			float tweenFactor = clamp(frame + 1.0f, 0.0f, 1.0f);
+
+			if (animSource->TweenFromBlendAnimFrame[i].T < 0.0f)
+			{
+				b.offsets[0] = seq->StartFrame * mesh->FrameVerts;
+				b.offsets[1] = seq->StartFrame * mesh->FrameVerts;
+				b.offsets[2] = seq->StartFrame * mesh->FrameVerts;
+				b.t0 = 0.0f;
+				b.t1 = 0.0f;
+				b.weight = tweenFactor;
+			}
+			else
+			{
+				b.offsets[0] = animSource->TweenFromBlendAnimFrame[i].V0;
+				b.offsets[1] = animSource->TweenFromBlendAnimFrame[i].V1;
+				b.offsets[2] = seq->StartFrame * mesh->FrameVerts;
+				b.t0 = animSource->TweenFromBlendAnimFrame[i].T;
+				b.t1 = tweenFactor;
+				b.weight = 1.0f;
+			}
+		}
+	}
+
+	SetupMeshTextures(actor, mesh);
+
+	uint32_t polyflags = 0;
+	switch (actor->Style())
+	{
+	default: break;
+	case STY_None: break;
+	case STY_AlphaBlend: break;
+	case STY_Masked: polyflags |= PF_Masked; break;
+	case STY_Translucent: polyflags |= PF_Translucent; break;
+	case STY_Modulated: polyflags |= PF_Modulated; break;
+	}
+	if (actor->bNoSmooth()) polyflags |= PF_NoSmooth;
+	if (actor->bSelected()) polyflags |= PF_Selected;
+	if (actor->bMeshEnviroMap()) polyflags |= PF_Environment;
+	if (actor->bMeshCurvy()) polyflags |= PF_Flat;
+	if (actor->bNoSmooth()) polyflags |= PF_NoSmooth;
+	if (actor->bUnlit() || actor->Region().ZoneNumber == 0) polyflags |= PF_Unlit;
+
+	bool needTranslucentPass = false;
+
+	UZoneInfo* zoneActor = engine->GetZoneActor(actor->Region().ZoneNumber);
+
+	VertexLight vertexLight;
+	lightsys->InitVertexLight(vertexLight, lightLocationActor, zoneActor);
+
+	GouraudVertex vertices[3];
+	for (const MeshTri& tri : mesh->Tris)
+	{
+		if (tri.TextureIndex >= mesh->Textures.size())
+			continue;
+
+		uint32_t renderflags = tri.PolyFlags | polyflags;
+		UTexture* tex = (renderflags & PF_Environment) ? engine->render->Mesh.envmap : engine->render->Mesh.textures[tri.TextureIndex];
+		if (!tex)
+			continue;
+
+		bool isTranslucent = (renderflags & (PF_Translucent | PF_Modulated | PF_Highlighted)) != 0;
+		if (isTranslucent && !translucentPass)
+		{
+			needTranslucentPass = true;
+			continue;
+		}
+		else if (!isTranslucent && translucentPass)
+		{
+			// We already drew the opaque surface
+			continue;
+		}
+
+		engine->render->UpdateTexture(tex);
+
+		TextureInfo texinfo;
+		engine->render->UpdateTextureInfo(texinfo, tex);
+
+		float uscale = (tex ? tex->UsedMipmaps.front().Width : 256) * (1.0f / 255.0f);
+		float vscale = (tex ? tex->UsedMipmaps.front().Height : 256) * (1.0f / 255.0f);
+
+		vec3 normals[3];
+		for (int i = 0; i < 3; i++)
+		{
+			size_t vindex = tri.Indices[i];
+			size_t vindex0 = vindex + vertexOffsets[0];
+			size_t vindex1 = vindex + vertexOffsets[1];
+
+			if (vindex0 >= mesh->Verts.size() || vindex1 >= mesh->Verts.size())
+				return false; // out of bounds
+
+			const vec3& v0 = mesh->Verts[vindex0];
+			const vec3& v1 = mesh->Verts[vindex1];
+			const vec3& n0 = mesh->Normals[vindex0];
+			const vec3& n1 = mesh->Normals[vindex1];
+			vec3 vertex = mix(v0 + n0 * fatness, v1 + n1 * fatness, t0);
+			vec3 normal = mix(n0, n1, t0);
+			if (t1 != 0.0f)
+			{
+				size_t vindex2 = vindex + vertexOffsets[2];
+				if (vindex2 >= mesh->Verts.size())
+					return false; // out of bounds
+
+				const vec3& v2 = mesh->Verts[vindex2];
+				const vec3& n2 = mesh->Normals[vindex2];
+				vertex = mix(vertex, v2 + n2 * fatness, t1);
+				normal = mix(normal, n2, t1);
+			}
+			vec3 restPose = mesh->Verts[vindex];
+			for (int i = 0; i < blendCount; i++)
+			{
+				BlendInfo& b = blends[i];
+				if (b.weight > 0.0f)
+				{
+					size_t blendVindex0 = vindex + b.offsets[0];
+					size_t blendVindex1 = vindex + b.offsets[1];
+
+					const vec3& bv0 = mesh->Verts[blendVindex0];
+					const vec3& bv1 = mesh->Verts[blendVindex1];
+					vec3 blendVertex = mix(bv0, bv1, b.t0);
+
+					if (b.t1 != 0.0f)
+					{
+						size_t blendVindex2 = vindex + b.offsets[2];
+						const vec3& bv2 = mesh->Verts[blendVindex2];
+						blendVertex = mix(blendVertex, bv2, b.t1);
+					}
+
+					vertex += (blendVertex - restPose) * b.weight;
+				}
+			}
+
+			vertices[i].Point = (ObjectToWorld * vec4(vertex, 1.0f)).xyz();
+			vertices[i].UV = { tri.UV[i].x * uscale, tri.UV[i].y * vscale };
+			normals[i] = normalize(ObjectNormalToWorld * normal);
+		}
+
+		if (renderflags & PF_Environment)
+		{
+			mat3 rotmat = mat3(frame->Frame.WorldToView * frame->Frame.ObjectToWorld);
+			for (int i = 0; i < 3; i++)
+			{
+				vec3 v = normalize(vertices[i].Point);
+				vec3 p = rotmat * reflect(v, normals[i]);
+				vertices[i].UV = { (p.x + 1.0f) * 128.0f * uscale, (p.y + 1.0f) * 128.0f * vscale };
+			}
+		}
+
+		for (int i = 0; i < 3; i++)
+		{
+			vertices[i].Light = vertexLight.GetVertexLight(vertices[i].Point, normals[i], !!(renderflags & PF_Unlit), !!(renderflags & PF_TwoSided));
+			vertices[i].Fog = vertexLight.GetVertexFog(vertices[i].Point);
+		}
+
+		renderflags |= PF_RenderFog;
+
+		frame->Device->DrawGouraudPolygon(&frame->Frame, texinfo, vertices, 3, renderflags);
+	}
+	return needTranslucentPass;
+}
+
+bool VisibleMesh::DrawLodMeshDX(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, ULodMesh* mesh, const mat4& ObjectToWorld, const mat3& ObjectNormalToWorld, bool translucentPass)
+{
+	UActor* animSource = actor;
+	if (engine->LaunchInfo.ue1Version > 219 && actor->bAnimByOwner() && actor->Owner())
+		animSource = actor->Owner();
+
+	MeshAnimSeq* seq = mesh->GetSequence(animSource->AnimSequence());
+	if (!seq)
+		return false;
+	float animFrame = animSource->AnimFrame() * seq->NumFrames;
+
+	int vertexOffsets[3];
+	float t0, t1;
+
+	if (animFrame >= 0.0f)
+	{
+		int frame0 = (int)animFrame;
+		int frame1 = frame0 + 1;
+		frame0 = frame0 % seq->NumFrames;
+		frame1 = frame1 % seq->NumFrames;
+		t0 = animFrame - (float)frame0;
+		t1 = 0.0f;
+		vertexOffsets[0] = (seq->StartFrame + frame0) * mesh->FrameVerts;
+		vertexOffsets[1] = (seq->StartFrame + frame1) * mesh->FrameVerts;
+		vertexOffsets[2] = 0;
+	}
+	else // Tween from old animation
+	{
+		t0 = animSource->TweenFromAnimFrame.T;
+		t1 = clamp(animFrame + 1.0f, 0.0f, 1.0f);
+		vertexOffsets[0] = animSource->TweenFromAnimFrame.V0;
+		vertexOffsets[1] = animSource->TweenFromAnimFrame.V1;
+		vertexOffsets[2] = seq->StartFrame * mesh->FrameVerts;
+	}
+
+	BlendInfo blends[4];
+	int blendCount = 0;
+
+	for (int i = 0; i < 4; i++)
+	{
+		if (animSource->BlendAnimSequence()[i].IsNone())
+			continue;
+
+		MeshAnimSeq* seq = mesh->GetSequence(animSource->BlendAnimSequence()[i]);
+		if (!seq || seq->Name != animSource->BlendAnimSequence()[i])
+			continue;
+
+		float frame = animSource->BlendAnimFrame()[i] * seq->NumFrames;
+
+		static bool loggedBlend[4] = {};
+		if (!loggedBlend[i])
+		{
+			LogMessage("DrawLodMeshDX blend[" + std::to_string(i) + "]: seq='" + seq->Name.ToString() + "' frame=" + std::to_string(frame) + " StartFrame=" + std::to_string(seq->StartFrame) + " NumFrames=" + std::to_string(seq->NumFrames) + " FrameVerts=" + std::to_string(mesh->FrameVerts) + " weight=1.0");
+			loggedBlend[i] = true;
+		}
+
+		BlendInfo& b = blends[blendCount++];
+
+		if (frame >= 0.0f)
+		{
+			int f0 = (int)frame;
+			int f1 = f0 + 1;
+
+			f0 %= seq->NumFrames;
+			f1 %= seq->NumFrames;
+
+			b.t0 = frame - f0;
+			b.t1 = 0.0f;
+
+			b.offsets[0] = (seq->StartFrame + f0) * mesh->FrameVerts;
+			b.offsets[1] = (seq->StartFrame + f1) * mesh->FrameVerts;
+			b.offsets[2] = 0;
+
+			b.weight = 1.0f;
+		}
+		else // Tween from old blend state to new frame 0
+		{
+			float tweenFactor = clamp(frame + 1.0f, 0.0f, 1.0f);
+
+			if (animSource->TweenFromBlendAnimFrame[i].T < 0.0f)
+			{
+				b.offsets[0] = seq->StartFrame * mesh->FrameVerts;
+				b.offsets[1] = seq->StartFrame * mesh->FrameVerts;
+				b.offsets[2] = seq->StartFrame * mesh->FrameVerts;
+				b.t0 = 0.0f;
+				b.t1 = 0.0f;
+				b.weight = tweenFactor;
+			}
+			else
+			{
+				b.offsets[0] = animSource->TweenFromBlendAnimFrame[i].V0;
+				b.offsets[1] = animSource->TweenFromBlendAnimFrame[i].V1;
+				b.offsets[2] = seq->StartFrame * mesh->FrameVerts;
+				b.t0 = animSource->TweenFromBlendAnimFrame[i].T;
+				b.t1 = tweenFactor;
+				b.weight = 1.0f;
+			}
+		}
+	}
+
+	SetupLodMeshTextures(actor, mesh);
+	FindAttachmentPoints(mesh, ObjectToWorld, vertexOffsets, t0, t1);
+	return DrawLodMeshFaceDX(frame, actor, lightLocationActor, mesh, mesh->Faces, ObjectToWorld, ObjectNormalToWorld, mesh->SpecialVerts, vertexOffsets, t0, t1, translucentPass, blends, blendCount);
+}
+
+bool VisibleMesh::DrawLodMeshFaceDX(VisibleFrame* frame, UActor* actor, UActor* lightLocationActor, ULodMesh* mesh, const Array<MeshFace>& faces, const mat4& ObjectToWorld, const mat3& ObjectNormalToWorld, int baseVertexOffset, const int* vertexOffsets, float t0, float t1, bool translucentPass, BlendInfo* blends, int blendCount)
+{
+	auto lightsys = &engine->Level->Light;
+	float fatness = actor->Fatness() / 16.0f - 8.0f;
+
+	uint32_t polyFlags = 0;
+	switch (actor->Style())
+	{
+	default: break;
+	case STY_None: break;
+	case STY_AlphaBlend: break;
+	case STY_Masked: polyFlags |= PF_Masked; break;
+	case STY_Translucent: polyFlags |= PF_Translucent; break;
+	case STY_Modulated: polyFlags |= PF_Modulated; break;
+	}
+	if (actor->bNoSmooth()) polyFlags |= PF_NoSmooth;
+	if (actor->bSelected()) polyFlags |= PF_Selected;
+	if (actor->bMeshEnviroMap()) polyFlags |= PF_Environment;
+	if (actor->bMeshCurvy()) polyFlags |= PF_Flat;
+	if (actor->bNoSmooth()) polyFlags |= PF_NoSmooth;
+	if (actor->bUnlit() || actor->Region().ZoneNumber == 0) polyFlags |= PF_Unlit;
+
+	UZoneInfo* zoneActor = engine->GetZoneActor(actor->Region().ZoneNumber);
+
+	VertexLight vertexLight;
+	lightsys->InitVertexLight(vertexLight, lightLocationActor, zoneActor);
+
+	bool needTranslucentPass = false;
+
+	GouraudVertex vertices[3];
+	for (const MeshFace& face : faces)
+	{
+		if (face.MaterialIndex >= mesh->Materials.size())
+			continue;
+
+		const MeshMaterial& material = mesh->Materials[face.MaterialIndex];
+
+		if (material.PolyFlags & PF_Invisible)
+			continue;
+
+		uint32_t renderflags = material.PolyFlags | polyFlags;
+		UTexture* tex = (renderflags & PF_Environment) ? engine->render->Mesh.envmap : engine->render->Mesh.textures[material.TextureIndex];
+
+		// skip if no texture
+		if (!tex)
+			continue;
+
+		bool isTranslucent = (renderflags & (PF_Translucent | PF_Modulated | PF_Highlighted)) != 0;
+		if (isTranslucent && !translucentPass)
+		{
+			needTranslucentPass = true;
+			continue;
+		}
+		else if (!isTranslucent && translucentPass)
+		{
+			// We already drew the opaque surface
+			continue;
+		}
+
+		engine->render->UpdateTexture(tex);
+
+		TextureInfo texinfo;
+		engine->render->UpdateTextureInfo(texinfo, tex);
+
+		float uscale = (texinfo.Texture ? texinfo.Texture->UsedMipmaps.front().Width : 256) * (1.0f / 255.0f);
+		float vscale = (texinfo.Texture ? texinfo.Texture->UsedMipmaps.front().Height : 256) * (1.0f / 255.0f);
+
+		vec3 normals[3];
+		for (int i = 0; i < 3; i++)
+		{
+			const MeshWedge& wedge = mesh->Wedges[face.Indices[i]];
+
+			size_t vbase = (size_t)wedge.Vertex + baseVertexOffset;
+			size_t vindex = mesh->ReMapAnimVerts.empty() ? vbase : mesh->ReMapAnimVerts[vbase];
+			size_t vindex0 = vindex + vertexOffsets[0];
+			size_t vindex1 = vindex + vertexOffsets[1];
+
+			if (vindex0 >= mesh->Verts.size() || vindex1 >= mesh->Verts.size())
+				return false; // out of bounds
+
+			const vec3& v0 = mesh->Verts[vindex0];
+			const vec3& v1 = mesh->Verts[vindex1];
+			const vec3& n0 = mesh->Normals[vindex0];
+			const vec3& n1 = mesh->Normals[vindex1];
+			vec3 vertex = mix(v0 + n0 * fatness, v1 + n1 * fatness, t0);
+			vec3 normal = mix(n0, n1, t0);
+			if (t1 != 0.0f)
+			{
+				size_t vindex2 = vindex + vertexOffsets[2];
+				if (vindex2 >= mesh->Verts.size())
+					return false; // out of bounds
+
+				const vec3& v2 = mesh->Verts[vindex2];
+				const vec3& n2 = mesh->Normals[vindex2];
+				vertex = mix(vertex, v2 + n2 * fatness, t1);
+				normal = mix(normal, n2, t1);
+			}
+			vec3 restPose = mesh->Verts[vindex];
+			vec3 restNormal = mesh->Normals[vindex];
+			for (int j = 0; j < blendCount; j++)
+			{
+				BlendInfo& b = blends[j];
+				if (b.weight > 0.0f)
+				{
+					size_t blendVindex0 = vindex + b.offsets[0];
+					size_t blendVindex1 = vindex + b.offsets[1];
+
+					if (blendVindex0 >= mesh->Verts.size() || blendVindex1 >= mesh->Verts.size())
+						continue;
+
+					const vec3& bv0 = mesh->Verts[blendVindex0];
+					const vec3& bv1 = mesh->Verts[blendVindex1];
+					const vec3& bn0 = mesh->Normals[blendVindex0];
+					const vec3& bn1 = mesh->Normals[blendVindex1];
+
+					vec3 blendVertex = mix(bv0, bv1, b.t0);
+					vec3 blendNormal = mix(bn0, bn1, b.t0);
+
+					if (b.t1 != 0.0f)
+					{
+						size_t blendVindex2 = vindex + b.offsets[2];
+						if (blendVindex2 >= mesh->Verts.size())
+							continue;
+
+						const vec3& bv2 = mesh->Verts[blendVindex2];
+						const vec3& bn2 = mesh->Normals[blendVindex2];
+						blendVertex = mix(blendVertex, bv2, b.t1);
+						blendNormal = mix(blendNormal, bn2, b.t1);
+					}
+
+					vertex += (blendVertex - restPose) * b.weight;
+					normal += (blendNormal - restNormal) * b.weight;
+				}
+			}
+
+
+
+			vertices[i].Point = (ObjectToWorld * vec4(vertex, 1.0f)).xyz();
+			vertices[i].UV = { wedge.U * uscale, wedge.V * vscale };
+			normals[i] = normalize(ObjectNormalToWorld * normal);
+		}
+
+		if (renderflags & PF_Environment)
+		{
+			mat3 rotmat = mat3(frame->Frame.WorldToView * frame->Frame.ObjectToWorld);
+			for (int i = 0; i < 3; i++)
+			{
+				vec3 v = normalize(vertices[i].Point);
+				vec3 p = rotmat * reflect(v, normals[i]);
+				vertices[i].UV = { (p.x + 1.0f) * 128.0f * uscale, (p.y + 1.0f) * 128.0f * vscale };
+			}
+		}
+
+		for (int i = 0; i < 3; i++)
+		{
+			vertices[i].Light = vertexLight.GetVertexLight(vertices[i].Point, normals[i], !!(renderflags & PF_Unlit), !!(renderflags & PF_TwoSided));
+			vertices[i].Fog = vertexLight.GetVertexFog(vertices[i].Point);
+		}
+
+		renderflags |= PF_RenderFog;
+
+		frame->Device->DrawGouraudPolygon(&frame->Frame, texinfo, vertices, 3, renderflags);
+	}
+
+	return needTranslucentPass;
+}
+
+void VisibleMesh::DrawDebugInfo(VisibleFrame* frame, UActor* actor)
+{
+	auto pawn = UObject::TryCast<UPawn>(actor);
+	if (!pawn || !pawn->StateFrame)
+		return;
+
+	// Draw debug line to where pawn is trying to go
+	{
+		vec3 end;
+		if (pawn->StateFrame->LatentState == LatentRunState::MoveTo)
+		{
+			end = pawn->Destination();
+		}
+		else if (pawn->StateFrame->LatentState == LatentRunState::MoveToward && pawn->MoveTarget())
+		{
+			end = pawn->MoveTarget()->Location();
+		}
+		else if (pawn->StateFrame->LatentState == LatentRunState::StrafeTo)
+		{
+			end = pawn->Destination();
+		}
+		else if (pawn->StateFrame->LatentState == LatentRunState::StrafeFacing)
+		{
+			end = pawn->Destination();
+		}
+		else
+		{
+			return;
+		}
+
+		vec3 start = pawn->Location();
+		start.z += pawn->BaseEyeHeight();
+		end.z += pawn->BaseEyeHeight();
+
+		bool visible = pawn->FastTrace(end, start);
+		engine->render->Device->Draw3DLine(
+			&frame->Frame,
+			visible ? vec4(1.0f, 1.0f, 1.0f, 1.0f) : vec4(1.0f, 0.0f, 0.0f, 1.0f),
+			0,
+			start,
+			end);
+	}
+
+	// Draw desired rotation:
+	{
+		vec3 start = pawn->Location();
+		start.z += pawn->BaseEyeHeight() * 0.5f;
+		vec3 end = start + (Coords::Rotation(pawn->DesiredRotation()).ToMatrix() * vec4(1.0f, 0.0f, 0.0f, 1.0f)).xyz() * 100.0f;
+		engine->render->Device->Draw3DLine(
+			&frame->Frame,
+			vec4(0.6f, 0.6f, 1.0f, 1.0f),
+			0,
+			start,
+			end);
+
+		end = pawn->Focus();
+		engine->render->Device->Draw3DLine(
+			&frame->Frame,
+			vec4(0.6f, 1.0f, 0.6f, 1.0f),
+			0,
+			start,
+			end);
+	}
+
+	// Draw last calculated path for the bot
+	if (engine->LaunchInfo.ue1Version > 219)
+	{
+		vec3 start = pawn->Location();
+		start.z += pawn->BaseEyeHeight();
+
+		for (UNavigationPoint* p : pawn->RouteCache())
+		{
+			if (!p)
+				break;
+			vec3 end = p->Location();
+			end.z += pawn->BaseEyeHeight();
+			engine->render->Device->Draw3DLine(
+				&frame->Frame,
+				vec4(1.0f, 1.0f, 0.0f, 1.0f),
+				0,
+				start,
+				end);
+			start = end;
+		}
+	}
+}

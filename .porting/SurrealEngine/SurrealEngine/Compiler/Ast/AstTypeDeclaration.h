@@ -1,0 +1,110 @@
+
+#pragma once
+
+#include "AstNode.h"
+#include "AstName.h"
+#include "AstAccessType.h"
+#include <string>
+#include <vector>
+
+class Type;
+class AstTypeParameterList;
+
+class AstNameDeclaration : public AstNode
+{
+public:
+	Type *type = nullptr;
+};
+
+class AstClassDeclaration : public AstNameDeclaration
+{
+public:
+	void visit(AstNameVisitor *visitor)
+	{
+		visitor->name(this);
+	}
+
+	void visit_children(AstNameVisitor *visitor)
+	{
+		for (size_t i = 0; i < members.size(); i++)
+		{
+			members[i]->visit(visitor);
+		}
+	}
+
+	bool is_abstract = false;
+	bool is_native = false;
+	bool is_transient = false;
+	bool is_config = false;
+	std::string config;
+	bool per_object_config = false;
+	bool nativereplication = false;
+	bool no_export = false;
+	bool safe_replace = false;
+
+	std::string identifier;
+	AstIdentifierName* base_type = nullptr;
+
+	// allowed members types:
+	// AstConstantDeclaration, AstFieldDeclaration, AstMethodDeclaration
+	// AstNameDeclaration, AstStructDeclaration, AstStateDeclaration
+	std::vector<AstNode *> members;
+};
+
+class AstStructDeclaration : public AstNameDeclaration
+{
+public:
+	void visit(AstNameVisitor *visitor)
+	{
+		visitor->name(this);
+	}
+
+	void visit_children(AstNameVisitor *visitor)
+	{
+		for (size_t i = 0; i < members.size(); i++)
+		{
+			members[i]->visit(visitor);
+		}
+	}
+
+	AstAccessType access_type = {};
+	std::string identifier;
+	AstIdentifierName* base = nullptr;
+	std::vector<AstNode *> members;
+};
+
+class AstExpression;
+class EnumValueTypeMember;
+
+class AstEnumValueDeclaration : public AstNode
+{
+public:
+	void visit(AstNameVisitor *visitor)
+	{
+		visitor->name(this);
+	}
+
+	std::string identifier;
+	AstExpression *expression = nullptr;
+	EnumValueTypeMember *sema_type = nullptr;
+};
+
+class AstEnumDeclaration : public AstNameDeclaration
+{
+public:
+	void visit(AstNameVisitor *visitor)
+	{
+		visitor->name(this);
+	}
+
+	void visit_children(AstNameVisitor *visitor)
+	{
+		for (size_t i = 0; i < members.size(); i++)
+		{
+			members[i]->visit(visitor);
+		}
+	}
+
+	std::string identifier;
+	std::vector<AstEnumValueDeclaration *> members;
+};

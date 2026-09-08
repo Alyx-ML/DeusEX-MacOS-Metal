@@ -1,0 +1,1265 @@
+cmake_minimum_required(VERSION 3.15)
+
+project(SurrealEngine LANGUAGES C CXX OBJCXX)
+
+add_subdirectory(Thirdparty/openmpt)
+add_subdirectory(SurrealGPU)
+add_subdirectory(SurrealWidgets)
+
+if (WIN32 OR APPLE)
+	add_subdirectory(Thirdparty/openal-soft)
+endif()
+
+if(APPLE)
+	include(FetchContent)
+	FetchContent_Declare(moltenvk
+		URL "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar"
+		URL_HASH "SHA256=f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e"
+		DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+		SOURCE_SUBDIR "cmake-source-not-used"
+	)
+	FetchContent_MakeAvailable(moltenvk)
+
+	set(MOLTENVK_DYLIB
+		"${moltenvk_SOURCE_DIR}/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib")
+	if(NOT EXISTS "${MOLTENVK_DYLIB}")
+		message(FATAL_ERROR "MoltenVK runtime was not found in the downloaded package")
+	endif()
+endif()
+
+project(SurrealEngine LANGUAGES C CXX OBJCXX)
+
+set(SURREALCOMMON_SOURCES
+	SurrealEngine/Precomp.cpp
+	SurrealEngine/Precomp.h
+	SurrealEngine/GameApp.cpp
+	SurrealEngine/GameApp.h
+	SurrealEngine/EditorApp.cpp
+	SurrealEngine/EditorApp.h
+	SurrealEngine/DebuggerApp.cpp
+	SurrealEngine/DebuggerApp.h
+	SurrealEngine/Engine.cpp
+	SurrealEngine/Engine.h
+	SurrealEngine/GameFolder.cpp
+	SurrealEngine/GameFolder.h
+	SurrealEngine/LauncherSettings.cpp
+	SurrealEngine/LauncherSettings.h
+	SurrealEngine/GameWindow.cpp
+	SurrealEngine/GameWindow.h
+	SurrealEngine/UE1GameDatabase.h
+	SurrealEngine/UE1GameDatabase.cpp
+	SurrealEngine/Utils/CommandLine.cpp
+	SurrealEngine/Utils/CommandLine.h
+	SurrealEngine/Utils/Convert.cpp
+	SurrealEngine/Utils/Convert.h
+	SurrealEngine/Utils/Exception.cpp
+	SurrealEngine/Utils/Exception.h
+	SurrealEngine/Utils/File.cpp
+	SurrealEngine/Utils/File.h
+	SurrealEngine/Utils/Logger.cpp
+	SurrealEngine/Utils/Logger.h
+	SurrealEngine/Utils/JsonValue.cpp
+	SurrealEngine/Utils/JsonValue.h
+	SurrealEngine/Utils/SHA1Sum.cpp
+	SurrealEngine/Utils/SHA1Sum.h
+	SurrealEngine/Utils/StrTools.cpp
+	SurrealEngine/Utils/StrTools.h
+	SurrealEngine/Utils/Random.cpp
+	SurrealEngine/Utils/Random.h
+	SurrealEngine/Utils/UTF16.cpp
+	SurrealEngine/Utils/UTF16.h
+	SurrealEngine/Utils/UTF8Reader.cpp
+	SurrealEngine/Utils/UTF8Reader.h
+	SurrealEngine/Utils/MemoryStreamWriter.cpp
+	SurrealEngine/Utils/MemoryStreamWriter.h
+	SurrealEngine/Utils/Array.h
+	SurrealEngine/Utils/CrashReporter.cpp
+	SurrealEngine/Utils/CrashReporter.h
+	SurrealEngine/Utils/AlignedAlloc.h
+	SurrealEngine/Commandlet/Commandlet.cpp
+	SurrealEngine/Commandlet/Commandlet.h
+	SurrealEngine/Commandlet/Native/NativeCommandlet.cpp
+	SurrealEngine/Commandlet/Native/NativeCommandlet.h
+	SurrealEngine/Commandlet/Native/NativeObjExtractor.cpp
+	SurrealEngine/Commandlet/Native/NativeObjExtractor.h
+	SurrealEngine/Commandlet/Native/NativeFuncExtractor.cpp
+	SurrealEngine/Commandlet/Native/NativeFuncExtractor.h
+	SurrealEngine/Commandlet/Native/NativeCppGenerator.cpp
+	SurrealEngine/Commandlet/Native/NativeCppGenerator.h
+	SurrealEngine/Commandlet/Native/NativeCppUpdater.cpp
+	SurrealEngine/Commandlet/Native/NativeCppUpdater.h
+	SurrealEngine/Commandlet/QuitCommandlet.cpp
+	SurrealEngine/Commandlet/QuitCommandlet.h
+	SurrealEngine/Commandlet/RunCommandlet.cpp
+	SurrealEngine/Commandlet/RunCommandlet.h
+	SurrealEngine/Commandlet/ExportCommandlet.cpp
+	SurrealEngine/Commandlet/ExportCommandlet.h
+	SurrealEngine/Commandlet/CompilerCommandlet.cpp
+	SurrealEngine/Commandlet/CompilerCommandlet.h
+	SurrealEngine/Commandlet/Debug/CollisionCommandlet.cpp
+	SurrealEngine/Commandlet/Debug/CollisionCommandlet.h
+	SurrealEngine/Commandlet/VM/BreakpointCommandlet.cpp
+	SurrealEngine/Commandlet/VM/BreakpointCommandlet.h
+	SurrealEngine/Commandlet/VM/CallstackCommandlet.cpp
+	SurrealEngine/Commandlet/VM/CallstackCommandlet.h
+	SurrealEngine/Commandlet/VM/DisassemblyCommandlet.cpp
+	SurrealEngine/Commandlet/VM/DisassemblyCommandlet.h
+	SurrealEngine/Commandlet/VM/ListSourceCommandlet.cpp
+	SurrealEngine/Commandlet/VM/ListSourceCommandlet.h
+	SurrealEngine/Commandlet/VM/LocalsCommandlet.cpp
+	SurrealEngine/Commandlet/VM/LocalsCommandlet.h
+	SurrealEngine/Commandlet/VM/PrintCommandlet.cpp
+	SurrealEngine/Commandlet/VM/PrintCommandlet.h
+	SurrealEngine/Commandlet/VM/StepCommandlet.cpp
+	SurrealEngine/Commandlet/VM/StepCommandlet.h
+	SurrealEngine/Editor/Export.cpp
+	SurrealEngine/Editor/Export.h
+	SurrealEngine/Render/VisibleActor.cpp
+	SurrealEngine/Render/VisibleActor.h
+	SurrealEngine/Render/VisibleBrush.cpp
+	SurrealEngine/Render/VisibleBrush.h
+	SurrealEngine/Render/VisibleCorona.cpp
+	SurrealEngine/Render/VisibleCorona.h
+	SurrealEngine/Render/VisibleDecal.cpp
+	SurrealEngine/Render/VisibleDecal.h
+	SurrealEngine/Render/VisibleFrame.cpp
+	SurrealEngine/Render/VisibleFrame.h
+	SurrealEngine/Render/VisibleMesh.cpp
+	SurrealEngine/Render/VisibleMesh.h
+	SurrealEngine/Render/VisibleNode.cpp
+	SurrealEngine/Render/VisibleNode.h
+	SurrealEngine/Render/VisiblePortal.cpp
+	SurrealEngine/Render/VisiblePortal.h
+	SurrealEngine/Render/VisibleSprite.cpp
+	SurrealEngine/Render/VisibleSprite.h
+	SurrealEngine/Render/VisibleTranslucent.h
+	SurrealEngine/Render/RenderSubsystem.cpp
+	SurrealEngine/Render/RenderSubsystem.h
+	SurrealEngine/Render/RenderCanvas.cpp
+	SurrealEngine/Render/RenderScene.cpp
+	SurrealEngine/Render/RenderWindow.cpp
+	SurrealEngine/Render/BspClipper.cpp
+	SurrealEngine/Render/BspClipper.h
+	SurrealEngine/VM/NativeFunc.cpp
+	SurrealEngine/VM/Frame.cpp
+	SurrealEngine/VM/ExpressionValue.h
+	SurrealEngine/VM/StructValue.h
+	SurrealEngine/VM/ArrayValue.h
+	SurrealEngine/VM/ScriptCall.cpp
+	SurrealEngine/VM/Bytecode.cpp
+	SurrealEngine/VM/Bytecode.h
+	SurrealEngine/VM/ScriptCall.h
+	SurrealEngine/VM/ExpressionEvaluator.h
+	SurrealEngine/VM/Frame.h
+	SurrealEngine/VM/NativeFunc.h
+	SurrealEngine/VM/Expression.h
+	SurrealEngine/VM/ExpressionEvaluator.cpp
+	SurrealEngine/VM/ExpressionVisitor.h
+	SurrealEngine/VM/Iterator.cpp
+	SurrealEngine/VM/Iterator.h
+	SurrealEngine/Audio/AudioSource.h
+	SurrealEngine/Audio/AudioSource.cpp
+	SurrealEngine/Audio/AudioDevice.cpp
+	SurrealEngine/Audio/AudioDevice.h
+	SurrealEngine/Video/VideoPlayer.cpp
+	SurrealEngine/Video/VideoPlayer.h
+	SurrealEngine/Video/AVIFileReader.h
+	SurrealEngine/Video/AVIHeaders.h
+	SurrealEngine/Native/NStatLog.h
+	SurrealEngine/Native/NZoneInfo.cpp
+	SurrealEngine/Native/NNavigationPoint.cpp
+	SurrealEngine/Native/NLevelInfo.h
+	SurrealEngine/Native/NScriptedTexture.cpp
+	SurrealEngine/Native/NPawn.cpp
+	SurrealEngine/Native/NGameInfo.h
+	SurrealEngine/Native/NGameInfo.cpp
+	SurrealEngine/Native/NStatLogFile.h
+	SurrealEngine/Native/NWarpZoneInfo.cpp
+	SurrealEngine/Native/NScriptedTexture.h
+	SurrealEngine/Native/NObject.h
+	SurrealEngine/Native/NActor.cpp
+	SurrealEngine/Native/N227Emitter.h
+	SurrealEngine/Native/N227Emitter.cpp
+	SurrealEngine/Native/N227Projector.h
+	SurrealEngine/Native/N227Projector.cpp
+	SurrealEngine/Native/NPlayerPawn.h
+	SurrealEngine/Native/NStatLog.cpp
+	SurrealEngine/Native/NStatLogFile.cpp
+	SurrealEngine/Native/NPawn.h
+	SurrealEngine/Native/NConsole.h
+	SurrealEngine/Native/NWarpZoneInfo.h
+	SurrealEngine/Native/NLevelInfo.cpp
+	SurrealEngine/Native/NCanvas.h
+	SurrealEngine/Native/NCommandlet.h
+	SurrealEngine/Native/NConsole.cpp
+	SurrealEngine/Native/NNavigationPoint.h
+	SurrealEngine/Native/NCanvas.cpp
+	SurrealEngine/Native/NPlayerPawn.cpp
+	SurrealEngine/Native/NCommandlet.cpp
+	SurrealEngine/Native/NDecal.cpp
+	SurrealEngine/Native/NActor.h
+	SurrealEngine/Native/NObject.cpp
+	SurrealEngine/Native/NDecal.h
+	SurrealEngine/Native/NZoneInfo.h
+	SurrealEngine/Native/NInternetLink.cpp
+	SurrealEngine/Native/NInternetLink.h
+	SurrealEngine/Native/NTcpLink.cpp
+	SurrealEngine/Native/NTcpLink.h
+	SurrealEngine/Native/NUdpLink.cpp
+	SurrealEngine/Native/NUdpLink.h
+	SurrealEngine/Native/NDebugInfo.cpp
+	SurrealEngine/Native/NDebugInfo.h
+	SurrealEngine/Native/NDeusExPlayer.cpp
+	SurrealEngine/Native/NDeusExPlayer.h
+	SurrealEngine/Native/NScriptedPawn.cpp
+	SurrealEngine/Native/NScriptedPawn.h
+	SurrealEngine/Native/NDeusExDecoration.cpp
+	SurrealEngine/Native/NDeusExDecoration.h
+	SurrealEngine/Native/NDumpLocation.cpp
+	SurrealEngine/Native/NDumpLocation.h
+	SurrealEngine/Native/NDeusExSaveInfo.cpp
+	SurrealEngine/Native/NDeusExSaveInfo.h
+	SurrealEngine/Native/NGameDirectory.cpp
+	SurrealEngine/Native/NGameDirectory.h
+	SurrealEngine/Native/NParticleIterator.cpp
+	SurrealEngine/Native/NParticleIterator.h
+	SurrealEngine/Native/NPlayerPawnExt.cpp
+	SurrealEngine/Native/NPlayerPawnExt.h
+	SurrealEngine/Native/NUPakPathNodeIterator.cpp
+	SurrealEngine/Native/NUPakPathNodeIterator.h
+	SurrealEngine/Native/NUPakPawnPathNodeIterator.cpp
+	SurrealEngine/Native/NUPakPawnPathNodeIterator.h
+	SurrealEngine/Native/NRMusicPlayer.cpp
+	SurrealEngine/Native/NRMusicPlayer.h
+	SurrealEngine/Native/NBorderWindow.cpp
+	SurrealEngine/Native/NBorderWindow.h
+	SurrealEngine/Native/NButtonWindow.cpp
+	SurrealEngine/Native/NButtonWindow.h
+	SurrealEngine/Native/NCheckboxWindow.cpp
+	SurrealEngine/Native/NCheckboxWindow.h
+	SurrealEngine/Native/NClipWindow.cpp
+	SurrealEngine/Native/NClipWindow.h
+	SurrealEngine/Native/NComputerWindow.cpp
+	SurrealEngine/Native/NComputerWindow.h
+	SurrealEngine/Native/NConEvent.cpp
+	SurrealEngine/Native/NConEvent.h
+	SurrealEngine/Native/NConEventRandomLabel.cpp
+	SurrealEngine/Native/NConEventRandomLabel.h
+	SurrealEngine/Native/NConversation.cpp
+	SurrealEngine/Native/NConversation.h
+	SurrealEngine/Native/NDeusExTextParser.cpp
+	SurrealEngine/Native/NDeusExTextParser.h
+	SurrealEngine/Native/NEditWindow.cpp
+	SurrealEngine/Native/NEditWindow.h
+	SurrealEngine/Native/NExtensionObject.cpp
+	SurrealEngine/Native/NExtensionObject.h
+	SurrealEngine/Native/NExtString.cpp
+	SurrealEngine/Native/NExtString.h
+	SurrealEngine/Native/NFlagBase.cpp
+	SurrealEngine/Native/NFlagBase.h
+	SurrealEngine/Native/NGC.cpp
+	SurrealEngine/Native/NGC.h
+	SurrealEngine/Native/NLargeTextWindow.cpp
+	SurrealEngine/Native/NLargeTextWindow.h
+	SurrealEngine/Native/NListWindow.cpp
+	SurrealEngine/Native/NListWindow.h
+	SurrealEngine/Native/NModalWindow.cpp
+	SurrealEngine/Native/NModalWindow.h
+	SurrealEngine/Native/NRadioBoxWindow.cpp
+	SurrealEngine/Native/NRadioBoxWindow.h
+	SurrealEngine/Native/NRootWindow.cpp
+	SurrealEngine/Native/NRootWindow.h
+	SurrealEngine/Native/NScaleManagerWindow.cpp
+	SurrealEngine/Native/NScaleManagerWindow.h
+	SurrealEngine/Native/NScaleWindow.cpp
+	SurrealEngine/Native/NScaleWindow.h
+	SurrealEngine/Native/NScrollAreaWindow.cpp
+	SurrealEngine/Native/NScrollAreaWindow.h
+	SurrealEngine/Native/NTextLogWindow.cpp
+	SurrealEngine/Native/NTextLogWindow.h
+	SurrealEngine/Native/NTextWindow.cpp
+	SurrealEngine/Native/NTextWindow.h
+	SurrealEngine/Native/NTileWindow.cpp
+	SurrealEngine/Native/NTileWindow.h
+	SurrealEngine/Native/NTimeDemo.cpp
+	SurrealEngine/Native/NTimeDemo.h
+	SurrealEngine/Native/NToggleWindow.cpp
+	SurrealEngine/Native/NToggleWindow.h
+	SurrealEngine/Native/NViewportWindow.cpp
+	SurrealEngine/Native/NViewportWindow.h
+	SurrealEngine/Native/NWebRequest.cpp
+	SurrealEngine/Native/NWebRequest.h
+	SurrealEngine/Native/NWebResponse.cpp
+	SurrealEngine/Native/NWebResponse.h
+	SurrealEngine/Native/NWindow.cpp
+	SurrealEngine/Native/NWindow.h
+	SurrealEngine/RenderDevice/RenderDevice.cpp
+	SurrealEngine/RenderDevice/RenderDevice.h
+	SurrealEngine/RenderDevice/Vulkan/BufferManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/BufferManager.h
+	SurrealEngine/RenderDevice/Vulkan/CachedTexture.h
+	SurrealEngine/RenderDevice/Vulkan/CommandBufferManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/CommandBufferManager.h
+	SurrealEngine/RenderDevice/Vulkan/DescriptorSetManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/DescriptorSetManager.h
+	SurrealEngine/RenderDevice/Vulkan/FileResource.cpp
+	SurrealEngine/RenderDevice/Vulkan/FileResource.h
+	SurrealEngine/RenderDevice/Vulkan/FramebufferManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/FramebufferManager.h
+	SurrealEngine/RenderDevice/Vulkan/RenderPassManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/RenderPassManager.h
+	SurrealEngine/RenderDevice/Vulkan/SamplerManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/SamplerManager.h
+	SurrealEngine/RenderDevice/Vulkan/SceneTextures.cpp
+	SurrealEngine/RenderDevice/Vulkan/SceneTextures.h
+	SurrealEngine/RenderDevice/Vulkan/ShaderManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/ShaderManager.h
+	SurrealEngine/RenderDevice/Vulkan/TextureManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/TextureManager.h
+	SurrealEngine/RenderDevice/Vulkan/TextureUploader.cpp
+	SurrealEngine/RenderDevice/Vulkan/TextureUploader.h
+	SurrealEngine/RenderDevice/Vulkan/UploadManager.cpp
+	SurrealEngine/RenderDevice/Vulkan/UploadManager.h
+	SurrealEngine/RenderDevice/Vulkan/VulkanRenderDevice.cpp
+	SurrealEngine/RenderDevice/Vulkan/VulkanRenderDevice.h
+	SurrealEngine/RenderDevice/OpenGL/GLRenderDevice.cpp
+	SurrealEngine/RenderDevice/OpenGL/GLRenderDevice.h
+	SurrealEngine/RenderDevice/OpenGL/GLFileResource.cpp
+	SurrealEngine/RenderDevice/OpenGL/GLFileResource.h
+	SurrealEngine/RenderDevice/OpenGL/GLHandles.h
+	SurrealEngine/RenderDevice/OpenGL/GLTextureManager.cpp
+	SurrealEngine/RenderDevice/OpenGL/GLTextureManager.h
+	SurrealEngine/RenderDevice/OpenGL/GLTextureUploader.cpp
+	SurrealEngine/RenderDevice/OpenGL/GLTextureUploader.h
+	SurrealEngine/RenderDevice/OpenGL/GLUploadManager.cpp
+	SurrealEngine/RenderDevice/OpenGL/GLUploadManager.h
+	SurrealEngine/RenderDevice/OpenGL/GLCachedTexture.h
+	SurrealEngine/RenderDevice/OpenGL/gl_load/gl_load.c
+	SurrealEngine/RenderDevice/OpenGL/gl_load/gl_load.h
+	SurrealEngine/Package/Package.cpp
+	SurrealEngine/Package/Package.h
+	SurrealEngine/Package/PackageManager.cpp
+	SurrealEngine/Package/PackageManager.h
+	SurrealEngine/Package/PackageStream.cpp
+	SurrealEngine/Package/PackageStream.h
+	SurrealEngine/Package/PackageWriter.cpp
+	SurrealEngine/Package/PackageWriter.h
+	SurrealEngine/Package/PackageFlags.h
+	SurrealEngine/Package/PackageTables.h
+	SurrealEngine/Package/ObjectFlags.h
+	SurrealEngine/Package/ObjectStream.h
+	SurrealEngine/Package/IniFile.h
+	SurrealEngine/Package/IniFile.cpp
+	SurrealEngine/Package/IniProperty.cpp
+	SurrealEngine/Package/IniProperty.h
+	SurrealEngine/Package/NameString.cpp
+	SurrealEngine/Package/NameString.h
+	SurrealEngine/Math/FrustumPlanes.cpp
+	SurrealEngine/Math/FrustumPlanes.h
+	SurrealEngine/Math/halffloat.cpp
+	SurrealEngine/Math/halffloat.h
+	SurrealEngine/Math/hsb.cpp
+	SurrealEngine/Math/hsb.h
+	SurrealEngine/Math/mat.cpp
+	SurrealEngine/Math/mat.h
+	SurrealEngine/Math/quaternion.h
+	SurrealEngine/Math/vec.h
+	SurrealEngine/Math/rotator.h
+	SurrealEngine/Math/bbox.h
+	SurrealEngine/Math/coords.h
+	SurrealEngine/Math/scale.h
+	SurrealEngine/GC/GC.cpp
+	SurrealEngine/GC/GC.h
+	SurrealEngine/PropertyOffsets.cpp
+	SurrealEngine/PropertyOffsets.h
+	SurrealEngine/ObjectTravelInfo.cpp
+	SurrealEngine/ObjectTravelInfo.h
+	SurrealEngine/UnrealURL.cpp
+	SurrealEngine/UnrealURL.h
+	SurrealEngine/Packages/ConSys/UConAudioList.cpp
+	SurrealEngine/Packages/ConSys/UConAudioList.h
+	SurrealEngine/Packages/ConSys/UConCamera.h
+	SurrealEngine/Packages/ConSys/UConChoice.h
+	SurrealEngine/Packages/ConSys/UConFlagRef.h
+	SurrealEngine/Packages/ConSys/UConItem.h
+	SurrealEngine/Packages/ConSys/UConLight.h
+	SurrealEngine/Packages/ConSys/UConListItem.h
+	SurrealEngine/Packages/ConSys/UConObject.h
+	SurrealEngine/Packages/ConSys/UConSpeech.h
+	SurrealEngine/Packages/ConSys/UConversation.cpp
+	SurrealEngine/Packages/ConSys/UConversation.h
+	SurrealEngine/Packages/ConSys/UConversationList.h
+	SurrealEngine/Packages/ConSys/UConversationMissionList.h
+	SurrealEngine/Packages/ConSys/Events/UConEvent.cpp
+	SurrealEngine/Packages/ConSys/Events/UConEvent.h
+	SurrealEngine/Packages/ConSys/Events/UConEventAddCredits.h
+	SurrealEngine/Packages/ConSys/Events/UConEventAddGoal.h
+	SurrealEngine/Packages/ConSys/Events/UConEventAddNote.h
+	SurrealEngine/Packages/ConSys/Events/UConEventAddSkillPoints.h
+	SurrealEngine/Packages/ConSys/Events/UConEventAnimation.h
+	SurrealEngine/Packages/ConSys/Events/UConEventCheckFlag.h
+	SurrealEngine/Packages/ConSys/Events/UConEventCheckObject.h
+	SurrealEngine/Packages/ConSys/Events/UConEventCheckPersona.h
+	SurrealEngine/Packages/ConSys/Events/UConEventChoice.h
+	SurrealEngine/Packages/ConSys/Events/UConEventComment.h
+	SurrealEngine/Packages/ConSys/Events/UConEventEnd.h
+	SurrealEngine/Packages/ConSys/Events/UConEventJump.h
+	SurrealEngine/Packages/ConSys/Events/UConEventMoveCamera.h
+	SurrealEngine/Packages/ConSys/Events/UConEventRandomLabel.cpp
+	SurrealEngine/Packages/ConSys/Events/UConEventRandomLabel.h
+	SurrealEngine/Packages/ConSys/Events/UConEventSetFlag.h
+	SurrealEngine/Packages/ConSys/Events/UConEventSpeech.h
+	SurrealEngine/Packages/ConSys/Events/UConEventTrade.h
+	SurrealEngine/Packages/ConSys/Events/UConEventTransferObject.h
+	SurrealEngine/Packages/ConSys/Events/UConEventTrigger.h
+	SurrealEngine/Packages/ConSys/History/UConHistory.h
+	SurrealEngine/Packages/ConSys/History/UConHistoryEvent.h
+	SurrealEngine/Packages/Core/UClass.cpp
+	SurrealEngine/Packages/Core/UClass.h
+	SurrealEngine/Packages/Core/UCommandlet.h
+	SurrealEngine/Packages/Core/UConst.cpp
+	SurrealEngine/Packages/Core/UConst.h
+	SurrealEngine/Packages/Core/UEnum.cpp
+	SurrealEngine/Packages/Core/UEnum.h
+	SurrealEngine/Packages/Core/UField.cpp
+	SurrealEngine/Packages/Core/UField.h
+	SurrealEngine/Packages/Core/UFunction.cpp
+	SurrealEngine/Packages/Core/UFunction.h
+	SurrealEngine/Packages/Core/ULanguage.h
+	SurrealEngine/Packages/Core/UObject.cpp
+	SurrealEngine/Packages/Core/UObject.h
+	SurrealEngine/Packages/Core/UPackage.h
+	SurrealEngine/Packages/Core/USimpleCommandlet.h
+	SurrealEngine/Packages/Core/UState.cpp
+	SurrealEngine/Packages/Core/UState.h
+	SurrealEngine/Packages/Core/UStruct.cpp
+	SurrealEngine/Packages/Core/UStruct.h
+	SurrealEngine/Packages/Core/USubsystem.h
+	SurrealEngine/Packages/Core/UTextBuffer.cpp
+	SurrealEngine/Packages/Core/UTextBuffer.h
+	SurrealEngine/Packages/Core/Properties/UAnyProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UAnyProperty.h
+	SurrealEngine/Packages/Core/Properties/UArrayProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UArrayProperty.h
+	SurrealEngine/Packages/Core/Properties/UBoolProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UBoolProperty.h
+	SurrealEngine/Packages/Core/Properties/UByteProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UByteProperty.h
+	SurrealEngine/Packages/Core/Properties/UClassProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UClassProperty.h
+	SurrealEngine/Packages/Core/Properties/UFixedArrayProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UFixedArrayProperty.h
+	SurrealEngine/Packages/Core/Properties/UFloatProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UFloatProperty.h
+	SurrealEngine/Packages/Core/Properties/UIntProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UIntProperty.h
+	SurrealEngine/Packages/Core/Properties/UMapProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UMapProperty.h
+	SurrealEngine/Packages/Core/Properties/UNameProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UNameProperty.h
+	SurrealEngine/Packages/Core/Properties/UObjectProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UObjectProperty.h
+	SurrealEngine/Packages/Core/Properties/UPointerProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UPointerProperty.h
+	SurrealEngine/Packages/Core/Properties/UProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UProperty.h
+	SurrealEngine/Packages/Core/Properties/UStringProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UStringProperty.h
+	SurrealEngine/Packages/Core/Properties/UStrProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UStrProperty.h
+	SurrealEngine/Packages/Core/Properties/UStructProperty.cpp
+	SurrealEngine/Packages/Core/Properties/UStructProperty.h
+	SurrealEngine/Packages/DeusEx/UDeusExDecoration.cpp
+	SurrealEngine/Packages/DeusEx/UDeusExDecoration.h
+	SurrealEngine/Packages/DeusEx/UDeusExLevelInfo.h
+	SurrealEngine/Packages/DeusEx/UDeusExPlayer.cpp
+	SurrealEngine/Packages/DeusEx/UDeusExPlayer.h
+	SurrealEngine/Packages/DeusEx/UDeusExSaveInfo.cpp
+	SurrealEngine/Packages/DeusEx/UDeusExSaveInfo.h
+	SurrealEngine/Packages/DeusEx/UGameDirectory.cpp
+	SurrealEngine/Packages/DeusEx/UGameDirectory.h
+	SurrealEngine/Packages/DeusEx/UScriptedPawn.cpp
+	SurrealEngine/Packages/DeusEx/UScriptedPawn.h
+	SurrealEngine/Packages/DeusExText/UDeusExTextParser.cpp
+	SurrealEngine/Packages/DeusExText/UDeusExTextParser.h
+	SurrealEngine/Packages/Emitter/UDistantLightActor.h
+	SurrealEngine/Packages/Emitter/UEmitterGarbageCollector.h
+	SurrealEngine/Packages/Emitter/UEmitterRC.h
+	SurrealEngine/Packages/Emitter/UKillParticleForce.h
+	SurrealEngine/Packages/Emitter/UParticleConcentrateForce.h
+	SurrealEngine/Packages/Emitter/UVelocityForce.h
+	SurrealEngine/Packages/Emitter/UXBeamEmitter.h
+	SurrealEngine/Packages/Emitter/UXEmitter.cpp
+	SurrealEngine/Packages/Emitter/UXEmitter.h
+	SurrealEngine/Packages/Emitter/UXMeshEmitter.h
+	SurrealEngine/Packages/Emitter/UXParticleEmitter.cpp
+	SurrealEngine/Packages/Emitter/UXParticleEmitter.h
+	SurrealEngine/Packages/Emitter/UXParticleForces.h
+	SurrealEngine/Packages/Emitter/UXRainRestrictionVolume.h
+	SurrealEngine/Packages/Emitter/UXSpriteEmitter.h
+	SurrealEngine/Packages/Emitter/UXTrailEmitter.h
+	SurrealEngine/Packages/Emitter/UXTrailParticle.h
+	SurrealEngine/Packages/Emitter/UXWeatherEmitter.h
+	SurrealEngine/Packages/Engine/UCanvas.h
+	SurrealEngine/Packages/Engine/UClient.h
+	SurrealEngine/Packages/Engine/UConsole.h
+	SurrealEngine/Packages/Engine/UPlayer.h
+	SurrealEngine/Packages/Engine/URenderIterator.h
+	SurrealEngine/Packages/Engine/USurrealClient.cpp
+	SurrealEngine/Packages/Engine/USurrealClient.h
+	SurrealEngine/Packages/Engine/UViewport.h
+	SurrealEngine/Packages/Engine/Actors/UActor.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor.h
+	SurrealEngine/Packages/Engine/Actors/UActor_Animation.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_Base.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_Conversation.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_Owner.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_Phys.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysFalling.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysFlying.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysInterpolating.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysMovingBrush.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysProjectile.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysRolling.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysRotating.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysSpider.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysSwimming.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysTrailer.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_PhysWalking.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_Render.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_Touch.cpp
+	SurrealEngine/Packages/Engine/Actors/UActor_Zone.cpp
+	SurrealEngine/Packages/Engine/Actors/UAnimationNotify.h
+	SurrealEngine/Packages/Engine/Actors/UDecal.cpp
+	SurrealEngine/Packages/Engine/Actors/UDecal.h
+	SurrealEngine/Packages/Engine/Actors/UHUD.h
+	SurrealEngine/Packages/Engine/Actors/ULight.h
+	SurrealEngine/Packages/Engine/Actors/UMenu.h
+	SurrealEngine/Packages/Engine/Actors/UProjectile.h
+	SurrealEngine/Packages/Engine/Actors/UProjector.h
+	SurrealEngine/Packages/Engine/Actors/USkeletalMeshInstance.h
+	SurrealEngine/Packages/Engine/Actors/UStaticMeshActor.h
+	SurrealEngine/Packages/Engine/Actors/USpawnNotify.h
+	SurrealEngine/Packages/Engine/Actors/Brush/UBrush.h
+	SurrealEngine/Packages/Engine/Actors/Brush/UMover.h
+	SurrealEngine/Packages/Engine/Actors/Decoration/UCarcass.h
+	SurrealEngine/Packages/Engine/Actors/Decoration/UDecoration.h
+	SurrealEngine/Packages/Engine/Actors/Info/UDynamicZoneInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UGameInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UGameReplicationInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UInternetInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/ULevelInfo.cpp
+	SurrealEngine/Packages/Engine/Actors/Info/ULevelInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UMutator.h
+	SurrealEngine/Packages/Engine/Actors/Info/UPlayerReplicationInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UReplicationInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/USavedMove.h
+	SurrealEngine/Packages/Engine/Actors/Info/USkyZoneInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UStatLog.h
+	SurrealEngine/Packages/Engine/Actors/Info/UStatLogFile.h
+	SurrealEngine/Packages/Engine/Actors/Info/UWarpZoneInfo.cpp
+	SurrealEngine/Packages/Engine/Actors/Info/UWarpZoneInfo.h
+	SurrealEngine/Packages/Engine/Actors/Info/UZoneInfo.h
+	SurrealEngine/Packages/Engine/Actors/Inventory/UInventory.h
+	SurrealEngine/Packages/Engine/Actors/Inventory/UWeapon.h
+	SurrealEngine/Packages/Engine/Actors/InventoryAttachment/UInventoryAttachment.h
+	SurrealEngine/Packages/Engine/Actors/InventoryAttachment/UWeaponAttachment.h
+	SurrealEngine/Packages/Engine/Actors/InventoryAttachment/UWeaponMuzzleFlash.h
+	SurrealEngine/Packages/Engine/Actors/Keypoint/UInterpolationPoint.h
+	SurrealEngine/Packages/Engine/Actors/Keypoint/UKeypoint.h
+	SurrealEngine/Packages/Engine/Actors/Keypoint/Ulocationid.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UButtonMarker.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UInventorySpot.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/ULiftCenter.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/ULiftExit.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UNavigationPoint.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UPathNode.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UPlayerStart.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UTeleporter.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UTriggerMarker.h
+	SurrealEngine/Packages/Engine/Actors/NavigationPoint/UWarpZoneMarker.h
+	SurrealEngine/Packages/Engine/Actors/Pawn/UCamera.h
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn.h
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_AI.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_Path.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_Reach.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_ReachFlying.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_ReachSpider.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_ReachSwimming.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_ReachWalking.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_Tick.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPawn_Zone.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPlayerPawn.cpp
+	SurrealEngine/Packages/Engine/Actors/Pawn/UPlayerPawn.h
+	SurrealEngine/Packages/Engine/Actors/Pawn/UScout.h
+	SurrealEngine/Packages/Engine/Actors/Triggers/UTrigger.h
+	SurrealEngine/Packages/Engine/Actors/Triggers/UTriggers.h
+	SurrealEngine/Packages/Engine/Network/UActorChannel.h
+	SurrealEngine/Packages/Engine/Network/UChannel.h
+	SurrealEngine/Packages/Engine/Network/UControlChannel.h
+	SurrealEngine/Packages/Engine/Network/UDemoPlayPendingLevel.h
+	SurrealEngine/Packages/Engine/Network/UDemoRecConnection.h
+	SurrealEngine/Packages/Engine/Network/UFileChannel.h
+	SurrealEngine/Packages/Engine/Network/UNetConnection.h
+	SurrealEngine/Packages/Engine/Network/UNetPendingLevel.h
+	SurrealEngine/Packages/Engine/Network/UPendingLevel.h
+	SurrealEngine/Packages/Engine/Resources/UFont.cpp
+	SurrealEngine/Packages/Engine/Resources/UFont.h
+	SurrealEngine/Packages/Engine/Resources/UMusic.cpp
+	SurrealEngine/Packages/Engine/Resources/UMusic.h
+	SurrealEngine/Packages/Engine/Resources/UPalette.cpp
+	SurrealEngine/Packages/Engine/Resources/UPalette.h
+	SurrealEngine/Packages/Engine/Resources/UPrimitive.cpp
+	SurrealEngine/Packages/Engine/Resources/UPrimitive.h
+	SurrealEngine/Packages/Engine/Resources/USound.cpp
+	SurrealEngine/Packages/Engine/Resources/USound.h
+	SurrealEngine/Packages/Engine/Resources/UStaticLightData.h
+	SurrealEngine/Packages/Engine/Resources/Level/UBspNodes.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/UBspNodes.h
+	SurrealEngine/Packages/Engine/Resources/Level/UBspSurfs.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/UBspSurfs.h
+	SurrealEngine/Packages/Engine/Resources/Level/ULevel.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/ULevel.h
+	SurrealEngine/Packages/Engine/Resources/Level/ULevelBase.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/ULevelBase.h
+	SurrealEngine/Packages/Engine/Resources/Level/ULevelSummary.h
+	SurrealEngine/Packages/Engine/Resources/Level/UModel.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/UModel.h
+	SurrealEngine/Packages/Engine/Resources/Level/UPolys.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/UPolys.h
+	SurrealEngine/Packages/Engine/Resources/Level/UVectors.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/UVectors.h
+	SurrealEngine/Packages/Engine/Resources/Level/UVerts.cpp
+	SurrealEngine/Packages/Engine/Resources/Level/UVerts.h
+	SurrealEngine/Packages/Engine/Resources/Mesh/UAnimation.cpp
+	SurrealEngine/Packages/Engine/Resources/Mesh/UAnimation.h
+	SurrealEngine/Packages/Engine/Resources/Mesh/ULodMesh.cpp
+	SurrealEngine/Packages/Engine/Resources/Mesh/ULodMesh.h
+	SurrealEngine/Packages/Engine/Resources/Mesh/UMesh.cpp
+	SurrealEngine/Packages/Engine/Resources/Mesh/UMesh.h
+	SurrealEngine/Packages/Engine/Resources/Mesh/USkeletalMesh.cpp
+	SurrealEngine/Packages/Engine/Resources/Mesh/USkeletalMesh.h
+	SurrealEngine/Packages/Engine/Resources/Mesh/UStaticMesh.cpp
+	SurrealEngine/Packages/Engine/Resources/Mesh/UStaticMesh.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UBitmap.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UFireTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UFireTexture.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UFractalTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UFractalTexture.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UIceTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UIceTexture.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UScriptedTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UScriptedTexture.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UTexture.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UWaterTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UWaterTexture.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UWaveTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UWaveTexture.h
+	SurrealEngine/Packages/Engine/Resources/Textures/UWetTexture.cpp
+	SurrealEngine/Packages/Engine/Resources/Textures/UWetTexture.h
+	SurrealEngine/Packages/Engine/Subsystems/UAudioSubsystem.h
+	SurrealEngine/Packages/Engine/Subsystems/UEditorEngine.h
+	SurrealEngine/Packages/Engine/Subsystems/UEngine.h
+	SurrealEngine/Packages/Engine/Subsystems/UGameEngine.h
+	SurrealEngine/Packages/Engine/Subsystems/UNetDriver.h
+	SurrealEngine/Packages/Engine/Subsystems/URenderBase.h
+	SurrealEngine/Packages/Engine/Subsystems/URenderDevice.h
+	SurrealEngine/Packages/Engine/Subsystems/USurrealAudioDevice.cpp
+	SurrealEngine/Packages/Engine/Subsystems/USurrealAudioDevice.h
+	SurrealEngine/Packages/Engine/Subsystems/USurrealNetworkDevice.cpp
+	SurrealEngine/Packages/Engine/Subsystems/USurrealNetworkDevice.h
+	SurrealEngine/Packages/Engine/Subsystems/USurrealRenderDevice.cpp
+	SurrealEngine/Packages/Engine/Subsystems/USurrealRenderDevice.h
+	SurrealEngine/Packages/Extension/UExtensionObject.h
+	SurrealEngine/Packages/Extension/UExtString.cpp
+	SurrealEngine/Packages/Extension/UExtString.h
+	SurrealEngine/Packages/Extension/UPlayerPawnExt.cpp
+	SurrealEngine/Packages/Extension/UPlayerPawnExt.h
+	SurrealEngine/Packages/Extension/Flags/UFlag.h
+	SurrealEngine/Packages/Extension/Flags/UFlagBase.cpp
+	SurrealEngine/Packages/Extension/Flags/UFlagBase.h
+	SurrealEngine/Packages/Extension/Flags/UFlagBool.h
+	SurrealEngine/Packages/Extension/Flags/UFlagByte.h
+	SurrealEngine/Packages/Extension/Flags/UFlagFloat.h
+	SurrealEngine/Packages/Extension/Flags/UFlagInt.h
+	SurrealEngine/Packages/Extension/Flags/UFlagName.h
+	SurrealEngine/Packages/Extension/Flags/UFlagRotator.h
+	SurrealEngine/Packages/Extension/Flags/UFlagVector.h
+	SurrealEngine/Packages/Extension/Windows/UBorderWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UBorderWindow.h
+	SurrealEngine/Packages/Extension/Windows/UComputerWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UComputerWindow.h
+	SurrealEngine/Packages/Extension/Windows/UGC.cpp
+	SurrealEngine/Packages/Extension/Windows/UGC.h
+	SurrealEngine/Packages/Extension/Windows/UListWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UListWindow.h
+	SurrealEngine/Packages/Extension/Windows/UScaleManagerWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UScaleManagerWindow.h
+	SurrealEngine/Packages/Extension/Windows/UScaleWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UScaleWindow.h
+	SurrealEngine/Packages/Extension/Windows/UScrollAreaWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UScrollAreaWindow.h
+	SurrealEngine/Packages/Extension/Windows/UTileWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UTileWindow.h
+	SurrealEngine/Packages/Extension/Windows/UViewportWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UViewportWindow.h
+	SurrealEngine/Packages/Extension/Windows/UWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/UWindow.h
+	SurrealEngine/Packages/Extension/Windows/TabGroup/UClipWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/TabGroup/UClipWindow.h
+	SurrealEngine/Packages/Extension/Windows/TabGroup/UModalWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/TabGroup/UModalWindow.h
+	SurrealEngine/Packages/Extension/Windows/TabGroup/URadioBoxWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/TabGroup/URadioBoxWindow.h
+	SurrealEngine/Packages/Extension/Windows/TabGroup/URootWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/TabGroup/URootWindow.h
+	SurrealEngine/Packages/Extension/Windows/TabGroup/UTabGroupWindow.h
+	SurrealEngine/Packages/Extension/Windows/Text/UButtonWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/Text/UButtonWindow.h
+	SurrealEngine/Packages/Extension/Windows/Text/UCheckboxWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/Text/UCheckboxWindow.h
+	SurrealEngine/Packages/Extension/Windows/Text/UEditWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/Text/UEditWindow.h
+	SurrealEngine/Packages/Extension/Windows/Text/ULargeTextWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/Text/ULargeTextWindow.h
+	SurrealEngine/Packages/Extension/Windows/Text/UTextLogWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/Text/UTextLogWindow.h
+	SurrealEngine/Packages/Extension/Windows/Text/UTextWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/Text/UTextWindow.h
+	SurrealEngine/Packages/Extension/Windows/Text/UToggleWindow.cpp
+	SurrealEngine/Packages/Extension/Windows/Text/UToggleWindow.h
+	SurrealEngine/Packages/IpDrv/UInternetLink.cpp
+	SurrealEngine/Packages/IpDrv/UInternetLink.h
+	SurrealEngine/Packages/IpDrv/UTcpLink.cpp
+	SurrealEngine/Packages/IpDrv/UTcpLink.h
+	SurrealEngine/Packages/IpDrv/UUdpLink.cpp
+	SurrealEngine/Packages/IpDrv/UUdpLink.h
+	SurrealEngine/Packages/RMusicPlayer/URMusic_Component.h
+	SurrealEngine/Packages/RMusicPlayer/URMusic_Player.cpp
+	SurrealEngine/Packages/RMusicPlayer/URMusic_Player.h
+	SurrealEngine/Packages/UPak/UPathNodeIterator.cpp
+	SurrealEngine/Packages/UPak/UPathNodeIterator.h
+	SurrealEngine/Packages/UPak/UPawnPathNodeIterator.cpp
+	SurrealEngine/Packages/UPak/UPawnPathNodeIterator.h
+	SurrealEngine/Collision/TopLevel/CollisionSystem.cpp
+	SurrealEngine/Collision/TopLevel/CollisionSystem.h
+	SurrealEngine/Collision/TopLevel/CollisionHit.h
+	SurrealEngine/Collision/TopLevel/CollisionTest.h
+	SurrealEngine/Collision/TopLevel/TraceTest.cpp
+	SurrealEngine/Collision/TopLevel/TraceTest.h
+	SurrealEngine/Collision/TopLevel/OverlapTest.cpp
+	SurrealEngine/Collision/TopLevel/OverlapTest.h
+	SurrealEngine/Collision/BottomLevel/TraceRayModel.cpp
+	SurrealEngine/Collision/BottomLevel/TraceRayModel.h
+	SurrealEngine/Collision/BottomLevel/TraceAABBModel.cpp
+	SurrealEngine/Collision/BottomLevel/TraceAABBModel.h
+	SurrealEngine/Collision/BottomLevel/OverlapAABBModel.cpp
+	SurrealEngine/Collision/BottomLevel/OverlapAABBModel.h
+	SurrealEngine/Light/LightSystem.cpp
+	SurrealEngine/Light/LightSystem.h
+	SurrealEngine/Light/LightSystem_Light.cpp
+	SurrealEngine/Light/LightSystem_Fog.cpp
+	SurrealEngine/Light/LightActorTree.cpp
+	SurrealEngine/Light/LightActorTree.h
+	SurrealEngine/Light/LightEffect.cpp
+	SurrealEngine/Light/LightEffect.h
+	SurrealEngine/Light/LightmapBuilder.cpp
+	SurrealEngine/Light/LightmapBuilder.h
+	SurrealEngine/Light/Shadowmap.cpp
+	SurrealEngine/Light/Shadowmap.h
+	SurrealEngine/Light/FogmapBuilder.cpp
+	SurrealEngine/Light/FogmapBuilder.h
+	SurrealEngine/UI/WidgetResourceData.cpp
+	SurrealEngine/UI/WidgetResourceData.h
+	SurrealEngine/UI/Editor/AboutDialog.cpp
+	SurrealEngine/UI/Editor/AboutDialog.h
+	SurrealEngine/UI/ErrorWindow/ErrorWindow.cpp
+	SurrealEngine/UI/ErrorWindow/ErrorWindow.h
+	SurrealEngine/UI/Editor/EditorMainWindow.cpp
+	SurrealEngine/UI/Editor/EditorMainWindow.h
+	SurrealEngine/UI/Editor/EditorWorkspace.cpp
+	SurrealEngine/UI/Editor/EditorWorkspace.h
+	SurrealEngine/UI/Editor/EditorViewportFrame.cpp
+	SurrealEngine/UI/Editor/EditorViewportFrame.h
+	SurrealEngine/UI/Editor/EditorViewportHeader.cpp
+	SurrealEngine/UI/Editor/EditorViewportHeader.h
+	SurrealEngine/UI/Editor/EditorViewport.cpp
+	SurrealEngine/UI/Editor/EditorViewport.h
+	SurrealEngine/UI/Editor/Editor2DViewport.cpp
+	SurrealEngine/UI/Editor/Editor2DViewport.h
+	SurrealEngine/UI/Editor/Editor3DViewport.cpp
+	SurrealEngine/UI/Editor/Editor3DViewport.h
+	SurrealEngine/UI/Launcher/LauncherBanner.cpp
+	SurrealEngine/UI/Launcher/LauncherBanner.h
+	SurrealEngine/UI/Launcher/LauncherButtonbar.cpp
+	SurrealEngine/UI/Launcher/LauncherButtonbar.h
+	SurrealEngine/UI/Launcher/LauncherWindow.cpp
+	SurrealEngine/UI/Launcher/LauncherWindow.h
+	SurrealEngine/UI/Launcher/PlayGamePage.cpp
+	SurrealEngine/UI/Launcher/PlayGamePage.h
+	SurrealEngine/UI/Launcher/VideoSettingsPage.cpp
+	SurrealEngine/UI/Launcher/VideoSettingsPage.h
+	SurrealEngine/UI/Launcher/GameFoldersPage.cpp
+	SurrealEngine/UI/Launcher/GameFoldersPage.h
+	SurrealEngine/Compiler/Ast/Ast.h
+	SurrealEngine/Compiler/Ast/AstAccessType.h
+	SurrealEngine/Compiler/Ast/AstArray.h
+	SurrealEngine/Compiler/Ast/AstCompilationUnit.h
+	SurrealEngine/Compiler/Ast/AstExpression.h
+	SurrealEngine/Compiler/Ast/AstExpressionVisitor.h
+	SurrealEngine/Compiler/Ast/AstGenerics.h
+	SurrealEngine/Compiler/Ast/AstMemberDeclaration.h
+	SurrealEngine/Compiler/Ast/AstName.h
+	SurrealEngine/Compiler/Ast/AstNameVisitor.h
+	SurrealEngine/Compiler/Ast/AstNode.h
+	SurrealEngine/Compiler/Ast/AstStatement.h
+	SurrealEngine/Compiler/Ast/AstStatementVisitor.h
+	SurrealEngine/Compiler/Ast/AstTypeDeclaration.h
+	SurrealEngine/Compiler/Codegen/Codegen.cpp
+	SurrealEngine/Compiler/Codegen/Codegen.h
+	SurrealEngine/Compiler/Codegen/ClassDebugInfoBuilder.cpp
+	SurrealEngine/Compiler/Codegen/ClassDebugInfoBuilder.h
+	SurrealEngine/Compiler/Codegen/FunctionDebugInfoBuilder.cpp
+	SurrealEngine/Compiler/Codegen/FunctionDebugInfoBuilder.h
+	SurrealEngine/Compiler/Frontend/Compiler.cpp
+	SurrealEngine/Compiler/Frontend/Compiler.h
+	SurrealEngine/Compiler/Frontend/CompilerException.h
+	SurrealEngine/Compiler/Frontend/CompilerMessage.h
+	SurrealEngine/Compiler/Lex/Tokenizer.cpp
+	SurrealEngine/Compiler/Lex/Tokenizer.h
+	SurrealEngine/Compiler/Lex/Token.h
+	SurrealEngine/Compiler/Lex/TextUtil.cpp
+	SurrealEngine/Compiler/Lex/TextUtil.h
+	SurrealEngine/Compiler/Parse/Parser.cpp
+	SurrealEngine/Compiler/Parse/Parser.h
+	SurrealEngine/Compiler/Parse/ParserArray.cpp
+	SurrealEngine/Compiler/Parse/ParserExpression.cpp
+	SurrealEngine/Compiler/Parse/ParserGenerics.cpp
+	SurrealEngine/Compiler/Parse/ParserMemberDeclaration.cpp
+	SurrealEngine/Compiler/Parse/ParserName.cpp
+	SurrealEngine/Compiler/Parse/ParserStatement.cpp
+	SurrealEngine/Compiler/Parse/ParserTypeDeclaration.cpp
+	SurrealEngine/Compiler/Sema/ConstResolver.cpp
+	SurrealEngine/Compiler/Sema/ConstResolver.h
+	SurrealEngine/Compiler/Sema/CreateTypeConstExpression.cpp
+	SurrealEngine/Compiler/Sema/CreateTypeConstExpression.h
+	SurrealEngine/Compiler/Sema/CreateTypeExpressions.cpp
+	SurrealEngine/Compiler/Sema/CreateTypeExpressions.h
+	SurrealEngine/Compiler/Sema/CreateTypeMembers.cpp
+	SurrealEngine/Compiler/Sema/CreateTypeMembers.h
+	SurrealEngine/Compiler/Sema/CreateTypeNames.cpp
+	SurrealEngine/Compiler/Sema/CreateTypeNames.h
+	SurrealEngine/Compiler/Sema/ExpressionSema.cpp
+	SurrealEngine/Compiler/Sema/ExpressionSema.h
+	SurrealEngine/Compiler/Sema/MethodSema.cpp
+	SurrealEngine/Compiler/Sema/MethodSema.h
+	SurrealEngine/Compiler/Sema/ResolveExpressionConstants.cpp
+	SurrealEngine/Compiler/Sema/ResolveExpressionConstants.h
+	SurrealEngine/Compiler/Sema/ResolveTypeConstExpression.cpp
+	SurrealEngine/Compiler/Sema/ResolveTypeConstExpression.h
+	SurrealEngine/Compiler/Sema/SemanticAnalysis.cpp
+	SurrealEngine/Compiler/Sema/SemanticAnalysis.h
+	SurrealEngine/Compiler/Sema/StatementSema.cpp
+	SurrealEngine/Compiler/Sema/StatementSema.h
+	SurrealEngine/Compiler/Typesystem/ReferenceType.h
+	SurrealEngine/Compiler/Typesystem/Type.h
+	SurrealEngine/Compiler/Typesystem/TypeExpression.h
+	SurrealEngine/Compiler/Typesystem/TypeExpressionVisitor.h
+	SurrealEngine/Compiler/Typesystem/TypeMember.h
+	SurrealEngine/Compiler/Typesystem/TypeMemberVisitor.h
+	SurrealEngine/Compiler/Typesystem/TypeSystem.cpp
+	SurrealEngine/Compiler/Typesystem/TypeSystem.h
+	SurrealEngine/Compiler/Typesystem/TypeVisitor.h
+	SurrealEngine/Compiler/Typesystem/ValueType.h
+)
+
+set(SURREALCOMMON_WIN32_SOURCES
+	SurrealEngine/SurrealEngine.natvis
+	SurrealEngine/Utils/ComPtr.h
+	SurrealEngine/RenderDevice/D3D11/D3D11RenderDevice.cpp
+	SurrealEngine/RenderDevice/D3D11/D3D11RenderDevice.h
+	SurrealEngine/RenderDevice/D3D11/D3D11FileResource.cpp
+	SurrealEngine/RenderDevice/D3D11/D3D11FileResource.h
+	SurrealEngine/RenderDevice/D3D11/D3D11TextureManager.cpp
+	SurrealEngine/RenderDevice/D3D11/D3D11TextureManager.h
+	SurrealEngine/RenderDevice/D3D11/D3D11TextureUploader.cpp
+	SurrealEngine/RenderDevice/D3D11/D3D11TextureUploader.h
+	SurrealEngine/RenderDevice/D3D11/D3D11UploadManager.cpp
+	SurrealEngine/RenderDevice/D3D11/D3D11UploadManager.h
+	SurrealEngine/RenderDevice/D3D11/D3D11CachedTexture.h
+)
+
+set(THIRDPARTY_SOURCES
+	Thirdparty/dr_wav.h
+	Thirdparty/minimp3_ex.h
+	Thirdparty/minimp3.h
+	Thirdparty/MurmurHash3/MurmurHash3.cpp
+	Thirdparty/MurmurHash3/MurmurHash3.h
+	Thirdparty/resample/CDSPSincFilterGen.h
+	Thirdparty/resample/CDSPHBDownsampler.h
+	Thirdparty/resample/CDSPResampler.h
+	Thirdparty/resample/CDSPRealFFT.h
+	Thirdparty/resample/CDSPFIRFilter.h
+	Thirdparty/resample/pffft.cpp
+	Thirdparty/resample/r8butil.h
+	Thirdparty/resample/CDSPHBUpsampler.h
+	Thirdparty/resample/CDSPProcessor.h
+	Thirdparty/resample/r8bbase.cpp
+	Thirdparty/resample/pffft.h
+	Thirdparty/resample/CDSPFracInterpolator.h
+	Thirdparty/resample/CDSPBlockConvolver.h
+	Thirdparty/resample/fft4g.h
+	Thirdparty/resample/r8bconf.h
+	Thirdparty/resample/r8bbase.h
+	Thirdparty/dr_flac.h
+	Thirdparty/stb_vorbis.h
+	Thirdparty/TinySHA1/TinySHA1.hpp
+	Thirdparty/miniz/miniz.c
+	Thirdparty/miniz/miniz.h
+	Thirdparty/kissfft/kiss_fft.c
+	Thirdparty/kissfft/kiss_fft.h
+	Thirdparty/kissfft/kiss_fftr.c
+	Thirdparty/kissfft/kiss_fftr.h
+)
+
+set(THIRDPARTY_WIN32_SOURCES
+)
+
+set(THIRDPARTY_UNIX_SOURCES
+)
+
+set(SURREALCOMMON_LIBS
+	surrealgpu
+	surrealwidgets
+	SurrealVideo
+	openmpt
+)
+
+set(SURREALCOMMON_WIN32_LIBS
+	OpenAL
+	DbgHelp
+	Shlwapi
+)
+
+set(SURREALCOMMON_UNIX_LIBS
+	openal
+)
+
+set(SURREALENGINE_SOURCES
+	SurrealEngine/MainGame.cpp
+)
+
+set(SURREALEDITOR_SOURCES
+	SurrealEngine/MainEditor.cpp
+)
+
+set(SURREALDEBUGGER_SOURCES
+	SurrealEngine/MainDebugger.cpp
+)
+
+set(SURREALVIDEO_SOURCES
+	SurrealVideo/SurrealVideo.cpp
+	SurrealVideo/SurrealVideo.h
+	SurrealVideo/libavcodec/indeo5.c
+	SurrealVideo/libavcodec/indeo5data.h
+	SurrealVideo/libavcodec/ivi.c
+	SurrealVideo/libavcodec/ivi.h
+	SurrealVideo/libavcodec/ivi_dsp.c
+	SurrealVideo/libavcodec/ivi_dsp.h
+	SurrealVideo/libavcodec/vlc.c
+	SurrealVideo/libavcodec/vlc.h
+	SurrealVideo/libavcodec/adpcm.c
+	SurrealVideo/libavcodec/adpcm.h
+	SurrealVideo/libavcodec/adpcm_data.c
+	SurrealVideo/libavcodec/adpcm_data.h
+	SurrealVideo/libavcodec/codec_internal.h
+	SurrealVideo/libavcodec/decode.h
+	SurrealVideo/libavcodec/defs.h
+	SurrealVideo/libavcodec/get_bits.h
+	SurrealVideo/libavcodec/mathops.h
+	SurrealVideo/libavcodec/packet.h
+	SurrealVideo/libavutil/reverse.c
+	SurrealVideo/libavutil/mem.c
+	SurrealVideo/libavutil/attributes.h
+	SurrealVideo/libavutil/avassert.h
+	SurrealVideo/libavutil/bswap.h
+	SurrealVideo/libavutil/config.h
+	SurrealVideo/libavutil/dynarray.h
+	SurrealVideo/libavutil/error.h
+	SurrealVideo/libavutil/frame.h
+	SurrealVideo/libavutil/imgutils.h
+	SurrealVideo/libavutil/intfloat.h
+	SurrealVideo/libavutil/intmath.h
+	SurrealVideo/libavutil/intreadwrite.h
+	SurrealVideo/libavutil/log.h
+	SurrealVideo/libavutil/macros.h
+	SurrealVideo/libavutil/mem.c
+	SurrealVideo/libavutil/mem.h
+	SurrealVideo/libavutil/pixfmt.h
+	SurrealVideo/libavutil/qsort.h
+	SurrealVideo/libavutil/reverse.h
+	SurrealVideo/libavutil/thread.h
+)
+
+source_group("SurrealEngine" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/.+")
+source_group("SurrealEngine\\Audio" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Audio/.+")
+source_group("SurrealEngine\\Math" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Math/.+")
+source_group("SurrealEngine\\Native" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Native/.+")
+source_group("SurrealEngine\\Package" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Package/.+")
+source_group("SurrealEngine\\RenderDevice" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/RenderDevice/.+")
+source_group("SurrealEngine\\RenderDevice/Vulkan" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/RenderDevice/Vulkan/.+")
+source_group("SurrealEngine\\RenderDevice/OpenGL" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/RenderDevice/OpenGL/.+")
+source_group("SurrealEngine\\RenderDevice/OpenGL/gl_load" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/RenderDevice/OpenGL/gl_load/.+")
+source_group("SurrealEngine\\RenderDevice/D3D11" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/RenderDevice/D3D11/.+")
+source_group("SurrealEngine\\Render" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Render/.+")
+source_group("SurrealEngine\\UI" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/UI/.+")
+source_group("SurrealEngine\\UI\\ErrorWindow" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/UI/ErrorWindow/.+")
+source_group("SurrealEngine\\UI\\Editor" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/UI/Editor/.+")
+source_group("SurrealEngine\\UI\\Launcher" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/UI/Launcher/.+")
+source_group("SurrealEngine\\Packages" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/.+")
+source_group("SurrealEngine\\Packages\\ConSys" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/ConSys/.+")
+source_group("SurrealEngine\\Packages\\ConSys\\Events" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/ConSys/Events/.+")
+source_group("SurrealEngine\\Packages\\ConSys\\History" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/ConSys/History/.+")
+source_group("SurrealEngine\\Packages\\Core" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Core/.+")
+source_group("SurrealEngine\\Packages\\Core\\Properties" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Core/Properties/.+")
+source_group("SurrealEngine\\Packages\\DeusEx" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/DeusEx/.+")
+source_group("SurrealEngine\\Packages\\DeusExText" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/DeusExText/.+")
+source_group("SurrealEngine\\Packages\\Emitter" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Emitter/.+")
+source_group("SurrealEngine\\Packages\\Engine" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\Brush" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/Brush/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\Decoration" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/Decoration/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\Info" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/Info/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\Inventory" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/Inventory/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\InventoryAttachment" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/InventoryAttachment/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\Keypoint" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/Keypoint/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\NavigationPoint" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/NavigationPoint/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\Pawn" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/Pawn/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Actors\\Triggers" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Actors/Triggers/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Network" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Network/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Resources" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Resources/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Resources\\Level" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Resources/Level/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Resources\\Mesh" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Resources/Mesh/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Resources\\Textures" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Resources/Textures/.+")
+source_group("SurrealEngine\\Packages\\Engine\\Subsystems" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Engine/Subsystems/.+")
+source_group("SurrealEngine\\Packages\\Extension" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Extension/.+")
+source_group("SurrealEngine\\Packages\\Extension\\Flags" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Extension/Flags/.+")
+source_group("SurrealEngine\\Packages\\Extension\\Windows" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Extension/Windows/.+")
+source_group("SurrealEngine\\Packages\\Extension\\Windows\\TabGroup" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Extension/Windows/TabGroup/.+")
+source_group("SurrealEngine\\Packages\\Extension\\Windows\\Text" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/Extension/Windows/Text/.+")
+source_group("SurrealEngine\\Packages\\IpDrv" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/IpDrv/.+")
+source_group("SurrealEngine\\Packages\\RMusicPlayer" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/RMusicPlayer/.+")
+source_group("SurrealEngine\\Packages\\UPak" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Packages/UPak/.+")
+source_group("SurrealEngine\\Collision" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Collision/.+")
+source_group("SurrealEngine\\Collision\\TopLevel" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Collision/TopLevel/.+")
+source_group("SurrealEngine\\Collision\\BottomLevel" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Collision/BottomLevel/.+")
+source_group("SurrealEngine\\Light" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Light/.+")
+source_group("SurrealEngine\\Commandlet" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Commandlet/.+")
+source_group("SurrealEngine\\Commandlet\\Debug" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Commandlet/Debug/.+")
+source_group("SurrealEngine\\Commandlet\\VM" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Commandlet/VM/.+")
+source_group("SurrealEngine\\Commandlet\\Native" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Commandlet/Native/.+")
+source_group("SurrealEngine\\Editor" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Editor/.+")
+source_group("SurrealEngine\\Utils" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Utils/.+")
+source_group("SurrealEngine\\GC" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/GC/.+")
+source_group("SurrealEngine\\VM" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/VM/.+")
+source_group("SurrealEngine\\Video" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Video/.+")
+source_group("SurrealEngine\\Compiler" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/.+")
+source_group("SurrealEngine\\Compiler\\Ast" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/Ast/.+")
+source_group("SurrealEngine\\Compiler\\Codegen" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/Codegen/.+")
+source_group("SurrealEngine\\Compiler\\Frontend" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/Frontend/.+")
+source_group("SurrealEngine\\Compiler\\Lex" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/Lex/.+")
+source_group("SurrealEngine\\Compiler\\Parse" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/Parse/.+")
+source_group("SurrealEngine\\Compiler\\Typesystem" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/Typesystem/.+")
+source_group("SurrealEngine\\Compiler\\Sema" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Compiler/Sema/.+")
+
+source_group("SurrealVideo" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealVideo/.+")
+source_group("SurrealVideo\\libavcodec" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealVideo/libavcodec/.+")
+source_group("SurrealVideo\\libavutil" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/SurrealVideo/libavutil/.+")
+
+source_group("Thirdparty" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/.+")
+source_group("Thirdparty\\resample" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/resample/.+")
+source_group("Thirdparty\\dumb" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/dumb/.+")
+source_group("Thirdparty\\dumb\\src" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/dumb/src/.+")
+source_group("Thirdparty\\dumb\\src\\core" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/dumb/src/core.+")
+source_group("Thirdparty\\dumb\\src\\helpers" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/dumb/src/helpers/.+")
+source_group("Thirdparty\\dumb\\src\\it" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/dumb/src/it/.+")
+source_group("Thirdparty\\dumb\\include" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/dumb/include/.+")
+source_group("Thirdparty\\dumb\\include\\internal" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/dumb/include/internal/.+")
+source_group("Thirdparty\\miniz" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/miniz/.+")
+source_group("Thirdparty\\kissfft" REGULAR_EXPRESSION "${CMAKE_CURRENT_SOURCE_DIR}/Thirdparty/kissfft/.+")
+
+include_directories(SurrealEngine SurrealWidgets/include Thirdparty SurrealGPU/include Thirdparty/openmpt Thirdparty/openal-soft/include Thirdparty/miniz)
+
+if(NOT APPLE AND SDL2_FOUND)
+	include_directories(SurrealEngine ${SDL2_INCLUDE_DIRS})
+	if (NOT DEFINED USE_SDL2)
+		add_definitions(-DUSE_SDL2)
+	endif()
+endif()
+
+if(WIN32)
+	set(SURREALCOMMON_SOURCES ${SURREALCOMMON_SOURCES} ${SURREALCOMMON_WIN32_SOURCES})
+	set(SURREALENGINE_SOURCES ${SURREALENGINE_SOURCES} Win32Resources/SurrealEngine.rc Win32Resources/SurrealEngine.manifest)
+	set(SURREALEDITOR_SOURCES ${SURREALEDITOR_SOURCES} Win32Resources/SurrealEngine.rc Win32Resources/SurrealEngine.manifest)
+	set(SURREALDEBUGGER_SOURCES ${SURREALDEBUGGER_SOURCES} Win32Resources/SurrealEngine.rc Win32Resources/SurrealEngine.manifest)
+	set(SURREALCOMMON_LIBS ${SURREALCOMMON_LIBS} ${SURREALCOMMON_WIN32_LIBS})
+	set(THIRDPARTY_SOURCES ${THIRDPARTY_SOURCES} ${THIRDPARTY_WIN32_SOURCES})
+	add_definitions(-DUNICODE -D_UNICODE -D_CRT_SECURE_NO_WARNINGS)
+elseif(APPLE)
+	set(SURREALCOMMON_SOURCES ${SURREALCOMMON_SOURCES} ${SURREALCOMMON_UNIX_SOURCES})
+	set(THIRDPARTY_SOURCES ${THIRDPARTY_SOURCES} ${THIRDPARTY_UNIX_SOURCES})
+	set(SURREALCOMMON_LIBS ${SURREALCOMMON_LIBS} ${CMAKE_DL_LIBS} OpenAL::OpenAL)
+	add_definitions(-DUNIX -D_UNIX)
+	add_link_options(-pthread)
+else()
+	set(SURREALCOMMON_SOURCES ${SURREALCOMMON_SOURCES})
+	set(SURREALCOMMON_LIBS ${SURREALCOMMON_LIBS} ${SURREALCOMMON_UNIX_LIBS} ${CMAKE_DL_LIBS} -lasound)
+	set(THIRDPARTY_SOURCES ${THIRDPARTY_SOURCES} ${THIRDPARTY_UNIX_SOURCES})
+	add_definitions(-DUNIX -D_UNIX)
+	add_link_options(-pthread)
+endif()
+
+if(MSVC)
+	# Use all cores for compilation
+	set(CMAKE_CXX_FLAGS "/MP ${CMAKE_CXX_FLAGS}")
+
+	# Ignore warnings in third party code
+	set_source_files_properties(${THIRDPARTY_SOURCES} PROPERTIES COMPILE_FLAGS "/wd4244 /wd4267 /wd4005 /wd4018 /wd4101 -D_CRT_SECURE_NO_WARNINGS")
+	set_source_files_properties(${SURREALVIDEO_SOURCES} PROPERTIES COMPILE_FLAGS "/wd4244 /wd4267 /wd4005 /wd4018 /wd4101 /wd4146 /wd4334 -D_CRT_SECURE_NO_WARNINGS /experimental:c11atomics")
+endif()
+
+add_library(SurrealVideo SHARED ${SURREALVIDEO_SOURCES})
+target_include_directories(SurrealVideo PRIVATE SurrealVideo)
+set_target_properties(SurrealVideo PROPERTIES CXX_STANDARD 20)
+set_target_properties(SurrealVideo PROPERTIES C_STANDARD 17)
+
+if(APPLE)
+    enable_language(OBJCXX)
+    set(DEUSEX_BUNDLE_BOOTSTRAP "${CMAKE_CURRENT_SOURCE_DIR}/../../NativePort/package_launcher.mm")
+    list(APPEND SURREALCOMMON_SOURCES SurrealEngine/RenderDevice/Metal/MetalRenderDevice.mm SurrealEngine/MacIntegration.mm "${DEUSEX_BUNDLE_BOOTSTRAP}")
+    set_source_files_properties(SurrealEngine/RenderDevice/Metal/MetalRenderDevice.mm SurrealEngine/MacIntegration.mm "${DEUSEX_BUNDLE_BOOTSTRAP}" PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    list(APPEND SURREALCOMMON_LIBS "-framework Metal" "-framework QuartzCore" "-framework GameController")
+endif()
+add_library(SurrealCommon STATIC ${SURREALCOMMON_SOURCES} ${THIRDPARTY_SOURCES})
+set_target_properties(SurrealCommon PROPERTIES OBJCXX_STANDARD 20)
+set_target_properties(SurrealCommon PROPERTIES CXX_STANDARD 20)
+target_precompile_headers(SurrealCommon PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/SurrealEngine/Precomp.h>)
+
+add_executable(SurrealEngine WIN32 MACOSX_BUNDLE ${SURREALENGINE_SOURCES})
+target_link_libraries(SurrealEngine SurrealCommon ${SURREALCOMMON_LIBS})
+set_target_properties(SurrealEngine PROPERTIES CXX_STANDARD 20)
+
+add_executable(SurrealEditor WIN32 MACOSX_BUNDLE ${SURREALEDITOR_SOURCES})
+target_link_libraries(SurrealEditor SurrealCommon ${SURREALCOMMON_LIBS})
+set_target_properties(SurrealEditor PROPERTIES CXX_STANDARD 20)
+
+add_executable(SurrealDebugger ${SURREALDEBUGGER_SOURCES})
+target_link_libraries(SurrealDebugger SurrealCommon ${SURREALCOMMON_LIBS})
+set_target_properties(SurrealDebugger PROPERTIES CXX_STANDARD 20)
+
+function( create_zip_source_groups FOLDER_NAME ZIP_DIR )
+	file(GLOB ZIP_SRCS ${ZIP_DIR}/*)
+	foreach(ZIP_SRC ${ZIP_SRCS})
+		if(IS_DIRECTORY ${ZIP_SRC})
+			get_filename_component(DIRNAME ${ZIP_SRC} NAME)
+			list(REMOVE_ITEM ZIP_SRCS ${ZIP_SRC})
+			create_zip_source_groups( ${FOLDER_NAME}\\${DIRNAME} ${ZIP_SRC} )
+		endif()
+		source_group(${FOLDER_NAME} FILES ${ZIP_SRCS})
+	endforeach()
+endfunction()
+
+function( add_zip ZIP_NAME ZIP_DIR )
+
+	# Add command for building the zip file
+	add_custom_command( OUTPUT ${CMAKE_BINARY_DIR}/${ZIP_NAME}
+		COMMAND zipdir ${CMAKE_BINARY_DIR}/${ZIP_NAME} ${ZIP_DIR}
+		DEPENDS zipdir )
+
+	# Find the files in the directory
+	file(GLOB_RECURSE ZIP_SRCS ${ZIP_DIR}/*)
+
+	# Create target project for the zip file
+	# Touch zipdir executable to force rebuild of the zip file if any of the resource files change
+	add_custom_target( Resources ALL
+		COMMAND ${CMAKE_COMMAND} -E touch $<TARGET_FILE:zipdir>
+		DEPENDS ${CMAKE_BINARY_DIR}/${ZIP_NAME}
+		SOURCES ${ZIP_SRCS})
+
+	# Create IDE source gorups
+	create_zip_source_groups("Source Files" ${ZIP_DIR})
+
+endfunction()
+
+set(ZIPDIR_SOURCES
+	Tools/Zipdir/Zipdir.cpp
+	Tools/Zipdir/ZipWriter.cpp
+	Tools/Zipdir/ZipWriter.h
+	Tools/Zipdir/DataBuffer.cpp
+	Tools/Zipdir/DataBuffer.h
+	Tools/Zipdir/IODevice.h
+	Tools/Zipdir/MemoryDevice.cpp
+	Tools/Zipdir/MemoryDevice.h
+	Tools/Zipdir/FilePath.cpp
+	Tools/Zipdir/FilePath.h
+	Tools/Zipdir/File.cpp
+	Tools/Zipdir/File.h
+	Tools/Zipdir/Directory.cpp
+	Tools/Zipdir/Directory.h
+	Tools/Zipdir/UTF16.cpp
+	Tools/Zipdir/UTF16.h
+	Thirdparty/miniz/miniz.c
+	Thirdparty/miniz/miniz.h
+)
+
+add_executable(zipdir ${ZIPDIR_SOURCES})
+set_target_properties(zipdir PROPERTIES CXX_STANDARD 20)
+set_target_properties(zipdir PROPERTIES C_STANDARD 17)
+if (APPLE)
+target_link_libraries(zipdir "-framework CoreFoundation")
+endif()
+
+add_zip(SurrealEngine.pk3 ${CMAKE_CURRENT_SOURCE_DIR}/Resources)
+
+add_dependencies(SurrealEngine Resources)
+add_dependencies(SurrealEditor Resources)
+
+if(WIN32)
+	add_custom_command(TARGET SurrealEngine POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:OpenAL::OpenAL>" $<TARGET_FILE_DIR:SurrealEngine>)
+endif()
+
+if(APPLE)
+	foreach(bundle_target SurrealEngine SurrealEditor)
+		set_property(TARGET ${bundle_target} APPEND PROPERTY BUILD_RPATH "@executable_path/../Frameworks")
+		set_property(TARGET ${bundle_target} APPEND PROPERTY INSTALL_RPATH "@executable_path/../Frameworks")
+		add_custom_command(TARGET ${bundle_target} POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${bundle_target}>/Contents/Resources"
+			COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${bundle_target}>/Contents/Frameworks"
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+				"${CMAKE_BINARY_DIR}/SurrealEngine.pk3"
+				"$<TARGET_BUNDLE_DIR:${bundle_target}>/Contents/Resources"
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+				"${MOLTENVK_DYLIB}"
+				"$<TARGET_BUNDLE_DIR:${bundle_target}>/Contents/Frameworks/libMoltenVK.dylib"
+		)
+	endforeach()
+else()
+	add_custom_command(TARGET SurrealEngine POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_BINARY_DIR}/SurrealEngine.pk3"
+		$<TARGET_FILE_DIR:SurrealEngine>
+	)
+endif()
+
+if(MSVC)
+	# Create stripped PDBs for nightly builds
+	set_target_properties(SurrealEngine PROPERTIES LINK_FLAGS_RELWITHDEBINFO /PDBSTRIPPED:${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/SurrealEngine-stripped.pdb)
+	set_target_properties(SurrealEditor PROPERTIES LINK_FLAGS_RELWITHDEBINFO /PDBSTRIPPED:${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/SurrealEditor-stripped.pdb)
+	set_target_properties(SurrealDebugger PROPERTIES LINK_FLAGS_RELWITHDEBINFO /PDBSTRIPPED:${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/SurrealDebugger-stripped.pdb)
+endif()
+
+install(TARGETS SurrealEngine RUNTIME DESTINATION bin BUNDLE DESTINATION app)
+install(TARGETS SurrealEditor RUNTIME DESTINATION bin BUNDLE DESTINATION app)
+install(TARGETS SurrealDebugger RUNTIME DESTINATION bin)

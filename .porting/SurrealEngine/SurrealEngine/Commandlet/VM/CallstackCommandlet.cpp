@@ -1,0 +1,119 @@
+
+#include "Precomp.h"
+#include "CallstackCommandlet.h"
+#include "DebuggerApp.h"
+#include "VM/Frame.h"
+#include "VM/Bytecode.h"
+#include "Commandlet/VM/DisassemblyCommandlet.h"
+
+CallstackCommandlet::CallstackCommandlet()
+{
+	SetShortFormName("bt");
+	SetLongFormName("backtrace");
+	SetShortDescription("Show call stack");
+}
+
+void CallstackCommandlet::OnCommand(DebuggerApp* console, const std::string& args)
+{
+	int index = 0;
+	for (auto it = Frame::Callstack.rbegin(); it != Frame::Callstack.rend(); ++it)
+	{
+		Frame* frame = *it;
+		UStruct* func = frame->Func;
+		if (func)
+		{
+			std::string name = frame->GetName();
+
+			if (frame->StatementIndex > 0) // StatementIndex points at the NEXT statement to be executed
+			{
+				Expression* statement = func->Code->Statements[frame->StatementIndex - 1];
+				int line = func->GetStatementLine(statement);
+				if (line == -1)
+					line = func->Line;
+				console->WriteOutput("#" + std::to_string(index) + ": " + ColorEscape(96) + name + ResetEscape() + " line " + ColorEscape(96) + std::to_string(line) + ResetEscape());
+				console->WriteOutput(": ");
+				PrintPrettyExpression::Print([&](const std::string& text) { console->WriteOutput(text); }, statement);
+			}
+			else
+			{
+				console->WriteOutput("#" + std::to_string(index) + ": " + ColorEscape(96) + name + ResetEscape() + " line " + ColorEscape(96) + std::to_string(func->Line) + ResetEscape());
+			}
+
+			console->WriteOutput(NewLine());
+		}
+		index++;
+	}
+}
+
+void CallstackCommandlet::OnPrintHelp(DebuggerApp* console)
+{
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+SelectFrameCommandlet::SelectFrameCommandlet()
+{
+	SetShortFormName("f");
+	SetLongFormName("frame");
+	SetShortDescription("Select the stack frame to operate on");
+}
+
+void SelectFrameCommandlet::OnCommand(DebuggerApp* console, const std::string& args)
+{
+	if (!args.empty())
+	{
+		console->CallstackIndex = std::atoi(args.c_str());
+		console->ListSourceLineOffset = 0;
+	}
+	console->PrintCurrentFrame();
+}
+
+void SelectFrameCommandlet::OnPrintHelp(DebuggerApp* console)
+{
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+UpFrameCommandlet::UpFrameCommandlet()
+{
+	//SetShortFormName("up");
+	SetLongFormName("up");
+	SetShortDescription("Selects the previous (outer) stack frame or one of the frames preceding it");
+}
+
+void UpFrameCommandlet::OnCommand(DebuggerApp* console, const std::string& args)
+{
+	int count = 1;
+	if (!args.empty())
+		count = std::atoi(args.c_str());
+	console->CallstackIndex = std::max(console->CallstackIndex + count, 0);
+	console->ListSourceLineOffset = 0;
+	console->PrintCurrentFrame();
+}
+
+void UpFrameCommandlet::OnPrintHelp(DebuggerApp* console)
+{
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+DownFrameCommandlet::DownFrameCommandlet()
+{
+	//SetShortFormName("down");
+	SetLongFormName("down");
+	SetShortDescription("Selects the next (inner) stack frame or one of the frames following it");
+}
+
+void DownFrameCommandlet::OnCommand(DebuggerApp* console, const std::string& args)
+{
+	int count = 1;
+	if (!args.empty())
+		count = std::atoi(args.c_str());
+	console->CallstackIndex = std::max(console->CallstackIndex - count, 0);
+	console->ListSourceLineOffset = 0;
+	console->PrintCurrentFrame();
+}
+
+void DownFrameCommandlet::OnPrintHelp(DebuggerApp* console)
+{
+}

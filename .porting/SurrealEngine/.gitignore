@@ -1,0 +1,9 @@
+/.vs
+/Build
+/build
+*.user
+.vscode
+*.internal
+/.cppbuild
+/*.sln
+.DS_Store

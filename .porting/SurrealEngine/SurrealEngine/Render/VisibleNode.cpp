@@ -1,0 +1,102 @@
+
+#include "Precomp.h"
+#include "VisibleNode.h"
+#include "VisibleDecal.h"
+#include "RenderSubsystem.h"
+#include "Engine.h"
+#include "Packages/Engine/Resources/Level/ULevel.h"
+#include "Packages/Engine/Resources/Level/UModel.h"
+#include "Packages/Engine/Actors/Info/UZoneInfo.h"
+#include "Packages/Engine/Actors/Info/ULevelInfo.h"
+
+void VisibleNode::Draw(VisibleFrame* frame)
+{
+	UModel* model = engine->Level->Model;
+	BspSurface& surface = model->Surfaces[Node->Surf];
+
+	const vec3& UVec = model->Vectors[surface.vTextureU];
+	const vec3& VVec = model->Vectors[surface.vTextureV];
+	const vec3& Base = model->Points[surface.pBase];
+
+	engine->render->UpdateTexture(surface.Material);
+
+	auto zoneActor = engine->GetZoneActor(Front ? Node->Zone1 : Node->Zone0);
+
+	// If no ZoneInfo is found, use the values from LevelInfo instead.
+	float ZoneUPanSpeed = zoneActor->TexUPanSpeed();
+	float ZoneVPanSpeed = zoneActor->TexVPanSpeed();
+
+	UTexture* tex;
+	if (surface.Material)
+		tex = surface.Material->GetAnimTexture();
+	else
+		tex = engine->LevelInfo->DefaultTexture();
+
+	TextureInfo texture;
+	engine->render->UpdateTexture(tex);
+	engine->render->UpdateTextureInfo(texture, surface, tex, ZoneUPanSpeed, ZoneVPanSpeed);
+
+	TextureInfo detailtex;
+	if (surface.Material && surface.Material->DetailTexture())
+	{
+		tex = surface.Material->DetailTexture()->GetAnimTexture();
+		engine->render->UpdateTexture(tex);
+		engine->render->UpdateTextureInfo(detailtex, surface, tex, ZoneUPanSpeed, ZoneVPanSpeed);
+	}
+
+	TextureInfo macrotex;
+	if (surface.Material && surface.Material->MacroTexture())
+	{
+		tex = surface.Material->MacroTexture()->GetAnimTexture();
+		engine->render->UpdateTexture(tex);
+		engine->render->UpdateTextureInfo(macrotex, surface, tex, ZoneUPanSpeed, ZoneVPanSpeed);
+	}
+
+	int numverts = Node->NumVertices;
+	vec3* points = engine->render->GetTempVertexBuffer(numverts);
+
+	BspVert* v = &model->Vertices[Node->VertPool];
+	if (frame->MirrorFlag)
+	{
+		for (int j = 0; j < numverts; j++)
+		{
+			points[numverts - 1 - j] = model->Points[v[j].Vertex];
+		}
+	}
+	else
+	{
+		for (int j = 0; j < numverts; j++)
+		{
+			points[j] = model->Points[v[j].Vertex];
+		}
+	}
+
+	TextureInfo lightmap;
+	TextureInfo fogmap;
+	if ((PolyFlags & PF_Unlit) == 0)
+	{
+		lightmap = engine->Level->Light.GetLevelLightmap(surface, zoneActor, model);
+		fogmap = engine->Level->Light.GetLevelFogmap(surface, engine->CameraActor->Region().Zone, model);
+	}
+
+	SurfaceInfo surfaceinfo;
+	surfaceinfo.PolyFlags = PolyFlags;
+	surfaceinfo.Texture = &texture;
+	surfaceinfo.MacroTexture = surface.Material && surface.Material->MacroTexture() ? &macrotex : nullptr;
+	surfaceinfo.DetailTexture = surface.Material && surface.Material->DetailTexture() ? &detailtex : nullptr;
+	surfaceinfo.LightMap = lightmap.NumMips != 0 ? &lightmap : nullptr;
+	surfaceinfo.FogMap = fogmap.NumMips != 0 ? &fogmap : nullptr;
+
+	SurfaceFacet facet;
+	facet.MapCoords.Origin = Base;
+	facet.MapCoords.XAxis = UVec;
+	facet.MapCoords.YAxis = VVec;
+	facet.Vertices = points;
+	facet.VertexCount = numverts;
+
+	frame->Device->DrawComplexSurface(&frame->Frame, surfaceinfo, facet);
+	engine->render->Stats.Surfaces++;
+
+	VisibleDecal decal;
+	decal.DrawDecals(frame, Node);
+}

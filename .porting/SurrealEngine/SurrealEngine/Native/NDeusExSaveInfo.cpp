@@ -1,0 +1,16 @@
+
+#include "Precomp.h"
+#include "NDeusExSaveInfo.h"
+#include "VM/NativeFunc.h"
+#include "Packages/DeusEx/UDeusExSaveInfo.h"
+
+void NDeusExSaveInfo::RegisterFunctions()
+{
+	RegisterVMNativeFunc_0("DeusExSaveInfo", "UpdateTimeStamp", &NDeusExSaveInfo::UpdateTimeStamp, 3075);
+}
+
+void NDeusExSaveInfo::UpdateTimeStamp(UObject* Self)
+{
+	auto DXSISelf = UObject::Cast<UDXSaveInfo>(Self);
+	DXSISelf->UpdateTimeStamp();
+}

@@ -1,0 +1,67 @@
+
+#include "Precomp.h"
+#include "NUPakPathNodeIterator.h"
+#include "Packages/UPak/UPathNodeIterator.h"
+#include "Packages/Engine/Actors/NavigationPoint/UNavigationPoint.h"
+#include "Utils/Logger.h"
+#include "VM/NativeFunc.h"
+
+void NUPakPathNodeIterator::RegisterFunctions()
+{
+	RegisterVMNativeFunc_2("PathNodeIterator", "BuildPath", &NUPakPathNodeIterator::BuildPath, 0);
+	RegisterVMNativeFunc_0("PathNodeIterator", "CheckUPak", &NUPakPathNodeIterator::CheckUPak, 0);
+	RegisterVMNativeFunc_1("PathNodeIterator", "GetFirst", &NUPakPathNodeIterator::GetFirst, 0);
+	RegisterVMNativeFunc_1("PathNodeIterator", "GetPrevious", &NUPakPathNodeIterator::GetPrevious, 0);
+	RegisterVMNativeFunc_1("PathNodeIterator", "GetCurrent", &NUPakPathNodeIterator::GetCurrent, 0);
+	RegisterVMNativeFunc_1("PathNodeIterator", "GetNext", &NUPakPathNodeIterator::GetNext, 0);
+	RegisterVMNativeFunc_1("PathNodeIterator", "GetLast", &NUPakPathNodeIterator::GetLast, 0);
+	RegisterVMNativeFunc_1("PathNodeIterator", "GetLastVisible", &NUPakPathNodeIterator::GetLastVisible, 0);
+}
+
+void NUPakPathNodeIterator::BuildPath(UObject* Self, vec3& Start, vec3& End)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	PNISelf->BuildPath(Start, End);
+}
+
+void NUPakPathNodeIterator::CheckUPak(UObject* Self)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	PNISelf->CheckUPak();
+}
+
+void NUPakPathNodeIterator::GetFirst(UObject* Self, UObject*& ReturnValue)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	ReturnValue = PNISelf->GetFirst();
+}
+
+void NUPakPathNodeIterator::GetPrevious(UObject* Self, UObject*& ReturnValue)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	ReturnValue = PNISelf->GetPrevious();
+}
+
+void NUPakPathNodeIterator::GetCurrent(UObject* Self, UObject*& ReturnValue)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	ReturnValue = PNISelf->GetCurrent();
+}
+
+void NUPakPathNodeIterator::GetNext(UObject* Self, UObject*& ReturnValue)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	ReturnValue = PNISelf->GetNext();
+}
+
+void NUPakPathNodeIterator::GetLast(UObject* Self, UObject*& ReturnValue)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	ReturnValue = PNISelf->GetLast();
+}
+
+void NUPakPathNodeIterator::GetLastVisible(UObject* Self, UObject*& ReturnValue)
+{
+	UPakPathNodeIterator* PNISelf = UObject::Cast<UPakPathNodeIterator>(Self);
+	ReturnValue = PNISelf->GetLastVisible();
+}

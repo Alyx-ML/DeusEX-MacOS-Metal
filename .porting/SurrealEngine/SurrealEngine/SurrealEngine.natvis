@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="Array&lt;*&gt;">
+    <DisplayString>{{ size={_size} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">_size</Item>
+      <Item Name="[capacity]" ExcludeView="simple">_capacity</Item>
+      <ArrayItems>
+        <Size>_size</Size>
+        <ValuePointer>_data</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="UObject">
+    <DisplayString>{Name} Class={Class->Name}</DisplayString>
+    <Expand>
+      <Item Name="Class">Class</Item>
+    </Expand>
+  </Type>
+  <Type Name="UField">
+    <DisplayString>{Name} Type={Class->Name} </DisplayString>
+  </Type>
+  <Type Name="UStruct">
+    <DisplayString>{Name} Type={Class->Name}</DisplayString>
+    <Expand>
+      <Synthetic Name="Children">
+        <Expand>
+          <LinkedListItems>
+            <HeadPointer>Children</HeadPointer>
+            <NextPointer>Next</NextPointer>
+            <ValueNode>this</ValueNode>
+          </LinkedListItems>
+        </Expand>
+      </Synthetic>
+    </Expand>
+  </Type>
+  <Type Name="UClass">
+    <DisplayString>{Name} Base={BaseStruct->Name}</DisplayString>
+    <Expand>
+      <Item Name="Base">BaseStruct</Item>
+      <Synthetic Name="Children">
+        <Expand>
+          <LinkedListItems>
+            <HeadPointer>Children</HeadPointer>
+            <NextPointer>Next</NextPointer>
+            <ValueNode>this</ValueNode>
+          </LinkedListItems>
+        </Expand>
+      </Synthetic>
+    </Expand>
+  </Type>
+  <Type Name="vec2T&lt;*&gt;">
+    <DisplayString>{x}, {y}</DisplayString>
+  </Type>
+  <Type Name="vec3T&lt;*&gt;">
+    <DisplayString>{x}, {y}, {z}</DisplayString>
+  </Type>
+  <Type Name="vec4T&lt;*&gt;">
+    <DisplayString>{x}, {y}, {z}, {w}</DisplayString>
+  </Type>
+  <Type Name="Color">
+    <DisplayString>{R}, {G}, {B}, {A}</DisplayString>
+  </Type>
+  <Type Name="Rotator">
+    <DisplayString>{Pitch}, {Yaw}, {Roll}</DisplayString>
+  </Type>
+  <Type Name="NameString">
+    <DisplayString>{NameString::Names[SpelledIndex]}</DisplayString>
+  </Type>
+</AutoVisualizer>

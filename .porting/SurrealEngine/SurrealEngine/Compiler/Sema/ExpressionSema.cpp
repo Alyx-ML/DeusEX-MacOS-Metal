@@ -1,0 +1,732 @@
+
+#include "Precomp.h"
+#include "ExpressionSema.h"
+#include "SemanticAnalysis.h"
+#include "Compiler/Typesystem/TypeSystem.h"
+#include "Compiler/Lex/TextUtil.h"
+#include <cmath>
+
+ExpressionSema::ExpressionSema(SemanticAnalysis& sema, NameScope& name_scope, TypeScope& type_scope) : sema(sema), name_scope(name_scope), type_scope(type_scope)
+{
+}
+
+void ExpressionSema::analyze(AstExpression* expression)
+{
+	expression->visit(this);
+}
+
+void ExpressionSema::expression(AstArrayCreationExpression* node)
+{
+	throw SemaException("Arrays not supported yet", node);
+}
+
+void ExpressionSema::expression(AstLiteral* node)
+{
+	if (node->type == AstLiteralType::integer)
+	{
+		size_t len = node->value.size();
+		char suffix1 = len > 1 ? node->value[len - 2] : 0;
+		char suffix2 = len > 0 ? node->value[len - 1] : 0;
+		bool hexidecimal = len > 2 && node->value[0] == '0' && node->value[1] == 'x';
+		bool unsigned_suffix = suffix1 == 'U' || suffix1 == 'u' || suffix2 == 'U' || suffix2 == 'u';
+		bool long_suffix = suffix1 == 'L' || suffix1 == 'l' || suffix2 == 'L' || suffix2 == 'l';
+
+		uint64_t value = 0;
+		if (hexidecimal)
+		{
+			for (size_t i = 2; i < len; i++)
+			{
+				char c = node->value[i];
+				if (c >= '0' && c <= '9')
+					value = (value << 4) + (c - '0');
+				else if (c >= 'a' && c <= 'f')
+					value = (value << 4) + 10 + (c - 'a');
+				else if (c >= 'A' && c <= 'F')
+					value = (value << 4) + 10 + (c - 'A');
+				else
+					break;
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < len; i++)
+			{
+				char c = node->value[i];
+				if (c >= '0' && c <= '9')
+					value = value * 10 + (c - '0');
+				else
+					break;
+			}
+		}
+
+		/*if (value > 0x7fff'ffff'ffff'ffffULL || (unsigned_suffix && long_suffix))
+		{
+			node->result = { sema.type_system().uint64_type, ExpressionClass::value };
+			node->result.constval.u64 = value;
+		}
+		else if (value > 0xffff'ffffULL || long_suffix)
+		{
+			node->result = { sema.type_system().int64_type, ExpressionClass::value };
+			node->result.constval.i64 = (int64_t)value;
+		}
+		else if (value > 0x7fff'ffffULL || unsigned_suffix)
+		{
+			node->result = { sema.type_system().uint_type, ExpressionClass::value };
+			node->result.constval.u32 = (uint32_t)value;
+		}
+		else */
+		{
+			node->result = { sema.type_system().int_type, ExpressionClass::value };
+			node->result.constval.i32 = (int32_t)value;
+		}
+	}
+	else if (node->type == AstLiteralType::real)
+	{
+		if (node->value.back() == 'f')
+		{
+			node->result = { sema.type_system().single_type, ExpressionClass::value };
+			node->result.constval.f32 = (float)std::atof(node->value.substr(0, node->value.size() - 1).c_str());
+		}
+		else
+		{
+			node->result = { sema.type_system().single_type, ExpressionClass::value };
+			node->result.constval.f32 = (float)std::atof(node->value.c_str());
+		}
+	}
+	else if (node->type == AstLiteralType::boolean)
+	{
+		node->result = { sema.type_system().boolean_type, ExpressionClass::value };
+		node->result.constval.i1 = NameString("true") == node->value;
+	}
+	else if (node->type == AstLiteralType::string)
+	{
+		node->result = { sema.type_system().string_type, ExpressionClass::value };
+		node->result.constval.str = node->value;
+	}
+	else if (node->type == AstLiteralType::name)
+	{
+		node->result = { sema.type_system().name_type, ExpressionClass::value };
+		node->result.constval.str = node->value;
+	}
+	else if (node->type == AstLiteralType::none)
+	{
+		node->result = { sema.type_system().null_type, ExpressionClass::value };
+	}
+	else if (node->type == AstLiteralType::vector)
+	{
+		auto pos1 = node->value.find(',');
+		auto pos2 = node->value.find(',', pos1 + 1);
+		node->result = { sema.type_system().vector_type, ExpressionClass::value };
+		node->result.constval.vec = vec3(
+			(float)std::atof(node->value.substr(0, pos1).c_str()),
+			(float)std::atof(node->value.substr(pos1 + 1, pos2 - pos1 - 1).c_str()),
+			(float)std::atof(node->value.substr(pos2 + 1).c_str()));
+	}
+	else if (node->type == AstLiteralType::rotator)
+	{
+		auto pos1 = node->value.find(',');
+		auto pos2 = node->value.find(',', pos1 + 1);
+		node->result = { sema.type_system().rotator_type, ExpressionClass::value };
+		node->result.constval.rot = Rotator(
+			std::atoi(node->value.substr(0, pos1).c_str()),
+			std::atoi(node->value.substr(pos1 + 1, pos2 - pos1 - 1).c_str()),
+			std::atoi(node->value.substr(pos2 + 1).c_str()));
+	}
+	else
+	{
+		throw SemaException("Unknown literal type", node);
+	}
+
+	node->result.constval.is_constant = true;
+}
+
+void ExpressionSema::expression(AstSimpleName* node)
+{
+	if (name_scope.variables.find(node->identifier) != name_scope.variables.end())
+	{
+		node->result = name_scope.variables[node->identifier];
+		return;
+	}
+
+	for (auto it = type_scope.scopes.rbegin(); it != type_scope.scopes.rend(); ++it)
+	{
+		TypeName* scope = *it;
+		MemberLookup lookup(sema.type_system());
+		lookup.lookup(scope, node->identifier);
+		if (lookup.members.size() == 1 && !dynamic_cast<FunctionMember*>(*lookup.members.begin()))
+		{
+			TypeName* member = *lookup.members.begin();
+			if (FieldTypeMember* field = dynamic_cast<FieldTypeMember*>(member))
+				node->result = { field->type, ExpressionClass::variable };
+			else
+				node->result = { member, ExpressionClass::type };
+			node->result.member = member;
+			return;
+		}
+		else if (!lookup.members.empty())
+		{
+			std::vector<FunctionMember*> method_group;
+			for (TypeName* member : lookup.members)
+			{
+				if (auto method = dynamic_cast<FunctionMember*>(member))
+					method_group.push_back(method);
+			}
+			if (method_group.size() != lookup.members.size())
+				throw SemaException("Ambiguous member lookup", node);
+			node->result = { name_scope.variables["self"].type, ExpressionClass::method_group };
+			node->result.method_group = method_group;
+			return;
+		}
+	}
+
+	AstIdentifierName name;
+	name.name = node->identifier;
+	name.sourceIndex = node->sourceIndex;
+	name.line = node->line;
+	name.column = node->column;
+	TypeName* type_name = type_scope.lookup_type(&name);
+	if (!type_name)
+		throw SemaException("Unknown identifier or type name", node);
+	node->result = { type_name, ExpressionClass::type };
+}
+
+void ExpressionSema::expression(AstNamedObject* node)
+{
+	// To do: implement this
+}
+
+void ExpressionSema::expression(AstMemberAccess* node)
+{
+	ExpressionResult operand;
+
+	if (node->expression)
+	{
+		node->expression->visit(this);
+		operand = node->expression->result;
+	}
+	else
+	{
+		throw SemaException("Invalid member access node", node);
+	}
+
+	if (operand.variant == ExpressionClass::type)
+	{
+		MemberLookup lookup(sema.type_system());
+		lookup.lookup(operand.type, node->identifier);
+		if (lookup.members.size() == 1 && !dynamic_cast<MethodTypeMember*>(*lookup.members.begin()))
+		{
+			// To do: throw error if field isn't static
+
+			TypeName* member = *lookup.members.begin();
+			if (Type* type = dynamic_cast<Type*>(member))
+				node->result = { member, ExpressionClass::type };
+			else if (FieldTypeMember* field = dynamic_cast<FieldTypeMember*>(member))
+				node->result = { field->type, ExpressionClass::variable };
+			//else if (ConstantTypeMember *constant = dynamic_cast<ConstantTypeMember*>(member))
+			//	node->result = { constant->type, ExpressionClass::value };
+			//else if (EnumValueTypeMember *enumval = dynamic_cast<EnumValueTypeMember*>(member))
+			//	node->result = { enumval->type, ExpressionClass::value };
+			else
+				throw SemaException("Invalid member reference", node);
+			node->result.member = member;
+			return;
+		}
+		else if (!lookup.members.empty())
+		{
+			std::vector<FunctionMember*> method_group;
+			for (TypeName* member : lookup.members)
+			{
+				if (auto method = dynamic_cast<MethodTypeMember*>(member))
+					method_group.push_back(method);
+			}
+			if (method_group.size() != lookup.members.size())
+				throw SemaException("Ambiguous member lookup", node);
+			node->result = { sema.type_system().void_type, ExpressionClass::method_group };
+			node->result.method_group = method_group;
+			return;
+		}
+	}
+	else
+	{
+		if (NameString(node->identifier) == "Default")
+		{
+			// To do: deal with class<Foobar> types
+
+			// Default block is same type as the main object (sort of, bit of a hack)
+			node->result = operand;
+			return;
+		}
+
+		MemberLookup lookup(sema.type_system());
+		lookup.lookup(operand.type, node->identifier);
+
+		if (lookup.members.size() == 1 && !dynamic_cast<MethodTypeMember*>(*lookup.members.begin()))
+		{
+			TypeName* member = *lookup.members.begin();
+			if (FieldTypeMember* field = dynamic_cast<FieldTypeMember*>(member))
+				node->result = { field->type, ExpressionClass::variable };
+			else
+				throw SemaException("Invalid member reference", node);
+			node->result.member = member;
+			return;
+		}
+		else if (!lookup.members.empty())
+		{
+			std::vector<FunctionMember*> method_group;
+			for (TypeName* member : lookup.members)
+			{
+				if (auto method = dynamic_cast<MethodTypeMember*>(member))
+					method_group.push_back(method);
+			}
+			if (method_group.size() != lookup.members.size())
+				throw SemaException("Ambiguous member lookup", node);
+			node->result = { operand.type, ExpressionClass::method_group };
+			node->result.method_group = method_group;
+			return;
+		}
+	}
+	throw SemaException("Undeclared identifier '" + node->identifier + "'", node);
+}
+
+void ExpressionSema::expression(AstInvocationExpression* node)
+{
+	node->expression->visit(this);
+
+	if (node->expression->result.variant == ExpressionClass::type)
+	{
+		if (node->args.size() != 1)
+			throw SemaException("Too many arguments for dynamic cast", node);
+
+		// Dynamic casts in unrealscript are function calls with the class name as the function name.
+		// Tbd: would it be better to declare a function with a matching signature?
+
+		auto clsType = dynamic_cast<ClassType*>(node->expression->result.type);
+		if (!clsType)
+			throw SemaException("Invalid type for dynamic cast", node);
+
+		node->result = { clsType, ExpressionClass::value };
+		return;
+	}
+
+	if (node->expression->result.variant != ExpressionClass::method_group)
+		throw SemaException("Method group expected", node);
+
+	std::vector<ExpressionResult> args;
+	for (size_t i = 0; i < node->args.size(); i++)
+	{
+		if (node->args[i]->expression)
+		{
+			node->args[i]->expression->visit(this);
+			args.push_back(node->args[i]->expression->result);
+		}
+		else
+		{
+			args.push_back({ nullptr, ExpressionClass::nothing });
+		}
+	}
+
+	FunctionMember* func = sema.type_system().find_best_function(node->expression->result.method_group, args);
+	if (!func)
+		throw SemaException("No suitable overload found", node);
+
+	node->result = { func->type, ExpressionClass::value, func };
+}
+
+void ExpressionSema::expression(AstElementAccess* node)
+{
+	throw SemaException("Arrays not yet supported", node);
+#if 0
+	node->expression->visit(this);
+
+	ExpressionResult member = node->expression->result;
+
+	if (dynamic_cast<ArrayType*>(member.type))
+	{
+		// To do: add array support
+		throw SemaException("Arrays not yet supported");
+	}
+	else
+	{
+		std::vector<FunctionMember*> candidates;
+
+		if (auto class_type = dynamic_cast<ClassType*>(member.type))
+		{
+			if (class_type->is_abstract)
+				throw SemaException("new not allowed for abstract class types");
+
+			candidates.reserve(class_type->indexers.size());
+			for (auto c : class_type->indexers)
+				candidates.push_back(c);
+		}
+		else if (auto struct_type = dynamic_cast<StructType*>(member.type))
+		{
+			candidates.reserve(struct_type->indexers.size());
+			for (auto c : struct_type->indexers)
+				candidates.push_back(c);
+		}
+		else
+		{
+			throw SemaException("Invalid type specified");
+		}
+
+		std::vector<ExpressionResult> args;
+		for (size_t i = 0; i < node->args.size(); i++)
+		{
+			node->args[i]->visit(this);
+			args.push_back(node->args[i]->result);
+		}
+
+		FunctionMember* indexer = sema.type_system().find_best_function(candidates, args);
+		if (!indexer)
+			throw SemaException("No suitable indexer found");
+
+		node->result = { indexer->type, ExpressionClass::indexer, indexer };
+	}
+#endif
+}
+
+void ExpressionSema::expression(AstBaseAccess* node)
+{
+	ExpressionResult operand = name_scope.variables["self"];
+
+	if (auto class_type = dynamic_cast<ClassType*>(operand.type))
+	{
+		if (!class_type->base)
+			throw SemaException("Class has no base class", node);
+		operand.type = class_type->base;
+	}
+	else
+	{
+		throw SemaException("Expression is not in a member function", node);
+	}
+
+	node->result = operand;
+}
+
+void ExpressionSema::expression(AstPostIncrementExpression* node)
+{
+	postoperator("++", node);
+}
+
+void ExpressionSema::expression(AstPostDecrementExpression* node)
+{
+	postoperator("--", node);
+}
+
+void ExpressionSema::expression(AstNewExpression* node)
+{
+	Type* type = type_scope.lookup_type(node->type);
+#if 0
+	std::vector<FunctionMember*> candidates;
+
+	if (auto class_type = dynamic_cast<ClassType*>(type))
+	{
+		if (class_type->is_abstract)
+			throw SemaException("new not allowed for abstract class types");
+
+		candidates.reserve(class_type->constructors.size());
+		for (auto c : class_type->constructors)
+			candidates.push_back(c);
+	}
+	else if (auto struct_type = dynamic_cast<StructType*>(type))
+	{
+		candidates.reserve(struct_type->constructors.size());
+		for (auto c : struct_type->constructors)
+			candidates.push_back(c);
+	}
+	else
+	{
+		throw SemaException("Invalid type specified");
+	}
+
+	std::vector<ExpressionResult> args;
+	for (size_t i = 0; i < node->args.size(); i++)
+	{
+		node->args[i]->visit(this);
+		args.push_back(node->args[i]->result);
+	}
+
+	FunctionMember* constructor = sema.type_system().find_best_function(candidates, args);
+	if (!constructor)
+		throw SemaException("No suitable constructor found");
+
+	node->result = { type, ExpressionClass::variable, constructor };
+#endif
+}
+
+void ExpressionSema::expression(AstTypeofExpression* node)
+{
+	throw SemaException("typeof not supported", node);
+}
+
+void ExpressionSema::expression(AstParenthesizedExpression* node)
+{
+	node->expression->visit(this);
+	node->result = node->expression->result;
+
+	if (node->result.variant == ExpressionClass::type)
+		throw SemaException("type not allowed", node);
+}
+
+void ExpressionSema::expression(AstSizeofExpression* node)
+{
+	node->result = { sema.type_system().int_type, ExpressionClass::value };
+}
+
+void ExpressionSema::expression(AstAnonymousMethodExpression* node)
+{
+	throw SemaException("anonymous functions not supported", node);
+}
+
+void ExpressionSema::expression(AstUnaryPlusExpression* node)
+{
+	unaryoperator("+", node);
+}
+
+void ExpressionSema::expression(AstUnaryMinusExpression* node)
+{
+	unaryoperator("-", node);
+}
+
+void ExpressionSema::expression(AstUnaryLogicalNotExpression* node)
+{
+	unaryoperator("!", node);
+}
+
+void ExpressionSema::expression(AstUnaryBitwiseComplementExpression* node)
+{
+	unaryoperator("~", node);
+}
+
+void ExpressionSema::expression(AstUnaryPreIncrementExpression* node)
+{
+	preoperator("++", node);
+}
+
+void ExpressionSema::expression(AstUnaryPreDecrementExpression* node)
+{
+	preoperator("--", node);
+}
+
+void ExpressionSema::expression(AstMultiplicationExpression* node)
+{
+	binaryoperator("*", node);
+}
+
+void ExpressionSema::expression(AstExponentiationExpression* node)
+{
+	binaryoperator("**", node);
+}
+
+void ExpressionSema::expression(AstDivisionExpression* node)
+{
+	binaryoperator("/", node);
+}
+
+void ExpressionSema::expression(AstRemainderExpression* node)
+{
+	binaryoperator("%", node);
+}
+
+void ExpressionSema::expression(AstAdditionExpression* node)
+{
+	binaryoperator("+", node);
+}
+
+void ExpressionSema::expression(AstSubtractionExpression* node)
+{
+	binaryoperator("-", node);
+}
+
+void ExpressionSema::expression(AstStringConcatExpression* node)
+{
+	binaryoperator("$", node);
+}
+
+void ExpressionSema::expression(AstStringSpaceConcatExpression* node)
+{
+	binaryoperator("@", node);
+}
+
+void ExpressionSema::expression(AstDotProductExpression* node)
+{
+	binaryoperator("Dot", node);
+}
+
+void ExpressionSema::expression(AstCrossProductExpression* node)
+{
+	binaryoperator("Cross", node);
+}
+
+void ExpressionSema::expression(AstShiftLeftExpression* node)
+{
+	binaryoperator("<<", node);
+}
+
+void ExpressionSema::expression(AstShiftRightExpression* node)
+{
+	binaryoperator(">>", node);
+}
+
+void ExpressionSema::expression(AstUnsignedShiftRightExpression* node)
+{
+	binaryoperator(">>>", node);
+}
+
+void ExpressionSema::expression(AstLessExpression* node)
+{
+	binaryoperator("<", node);
+}
+
+void ExpressionSema::expression(AstGreaterExpression* node)
+{
+	binaryoperator(">", node);
+}
+
+void ExpressionSema::expression(AstLessEqualExpression* node)
+{
+	binaryoperator("<=", node);
+}
+
+void ExpressionSema::expression(AstGreaterEqualExpression* node)
+{
+	binaryoperator(">=", node);
+}
+
+void ExpressionSema::expression(AstIsExpression* node)
+{
+	throw SemaException("is keyword not supported", node);
+}
+
+void ExpressionSema::expression(AstAsExpression* node)
+{
+	throw SemaException("as keyword not supported", node);
+}
+
+void ExpressionSema::expression(AstEqualExpression* node)
+{
+	binaryoperator("==", node);
+}
+
+void ExpressionSema::expression(AstNotEqualExpression* node)
+{
+	binaryoperator("!=", node);
+}
+
+void ExpressionSema::expression(AstCaseInsensitiveEqualExpression* node)
+{
+	binaryoperator("~=", node);
+}
+
+void ExpressionSema::expression(AstLogicalAndExpression* node)
+{
+	binaryoperator("&", node);
+}
+
+void ExpressionSema::expression(AstLogicalOrExpression* node)
+{
+	binaryoperator("|", node);
+}
+
+void ExpressionSema::expression(AstLogicalXorExpression* node)
+{
+	binaryoperator("^", node);
+}
+
+void ExpressionSema::expression(AstLogicalXorXorExpression* node)
+{
+	binaryoperator("^^", node);
+}
+
+void ExpressionSema::expression(AstConditionalAndExpression* node)
+{
+	binaryoperator("&&", node);
+}
+
+void ExpressionSema::expression(AstConditionalOrExpression* node)
+{
+	binaryoperator("||", node);
+}
+
+void ExpressionSema::expression(AstAssignmentExpression* node)
+{
+	node->operand1->visit(this);
+	node->operand2->visit(this);
+
+	if (node->assignment_type == "=")
+	{
+		if (!sema.type_system().implicit_convert_allowed(node->operand2->result.type, node->operand1->result.type, false))
+			throw SemaException("No suitable operator found", node);
+
+		node->result = { node->operand1->result.type, ExpressionClass::value };
+	}
+	else
+	{
+		auto& ts = sema.type_system();
+		FunctionMember* func = ts.find_best_function(ts.operators[node->assignment_type], { node->operand1->result, node->operand2->result });
+		if (!func)
+			throw SemaException("No suitable operator found", node);
+
+		TypeName* x = node->operand1->result.type;
+		TypeName* y = node->operand2->result.type;
+
+		bool convert_allowed = ts.implicit_convert_allowed(func->type, x, false);
+		if (!convert_allowed)
+			convert_allowed = ts.explicit_convert_allowed(func->type, x) && (ts.implicit_convert_allowed(x, y, false) || node->assignment_type == "<<=" || node->assignment_type == ">>=");
+
+		if (!convert_allowed)
+			throw SemaException("No suitable operator found", node);
+
+		node->result = { func->type, ExpressionClass::value, func };
+	}
+}
+
+void ExpressionSema::expression(AstTrinaryExpression* node)
+{
+	throw SemaException("Trinary operator not implemented", node);
+}
+
+void ExpressionSema::preoperator(const std::string& name, AstUnaryExpression* node)
+{
+	node->operand->visit(this);
+
+	auto& ts = sema.type_system();
+	FunctionMember* func = ts.find_best_function(ts.preoperators[name], { node->operand->result, });
+	if (!func)
+		throw SemaException("No suitable pre-operator found", node);
+	node->result = { func->type, ExpressionClass::value, func };
+}
+
+void ExpressionSema::postoperator(const std::string& name, AstUnaryExpression* node)
+{
+	node->operand->visit(this);
+
+	auto& ts = sema.type_system();
+	FunctionMember* func = ts.find_best_function(ts.postoperators[name], { node->operand->result, });
+	if (!func)
+		throw SemaException("No suitable post-operator found", node);
+	node->result = { func->type, ExpressionClass::value, func };
+}
+
+void ExpressionSema::binaryoperator(const std::string& name, AstBinaryExpression* node)
+{
+	node->operand1->visit(this);
+	node->operand2->visit(this);
+
+	auto& ts = sema.type_system();
+	FunctionMember* func = ts.find_best_function(ts.operators[name], { node->operand1->result, node->operand2->result });
+	if (!func)
+		throw SemaException("No suitable operator found", node);
+	node->result = { func->type, ExpressionClass::value, func };
+}
+
+void ExpressionSema::unaryoperator(const std::string& name, AstUnaryExpression* node)
+{
+	node->operand->visit(this);
+
+	auto& ts = sema.type_system();
+	FunctionMember* func = ts.find_best_function(ts.operators[name], { node->operand->result, });
+	if (!func)
+		throw SemaException("No suitable operator found", node);
+	node->result = { func->type, ExpressionClass::value, func };
+}

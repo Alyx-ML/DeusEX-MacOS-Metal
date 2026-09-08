@@ -1,0 +1,254 @@
+
+#include "Precomp.h"
+#include "TypeSystem.h"
+#include "Compiler/Ast/Ast.h"
+
+TypeSystem::TypeSystem()
+{
+	void_type = newType<VoidType>(nullptr);
+	pointer_type = newType<PointerType>(nullptr);
+	byte_type = newType<ByteType>(nullptr);
+	int_type = newType<IntType>(nullptr);
+	single_type = newType<SingleType>(nullptr);
+	boolean_type = newType<BooleanType>(nullptr);
+	name_type = newType<NameType>(nullptr);
+	string_type = newType<StringType>(nullptr);
+	array_type = newType<ArrayType>(nullptr);
+
+	addType(void_type);
+	addType(byte_type);
+	addType(int_type);
+	addType(single_type);
+	addType(boolean_type);
+	addType(name_type);
+	addType(string_type);
+	addType(array_type);
+
+	// To do: import this from the Core package
+	object = newType<ClassType>(nullptr, "Object", false);
+	addType(object);
+	classObject = newType<ClassType>(nullptr, "Class", false);
+	classObject->base = object;
+	addType(classObject);
+
+	// To do: also get these from the package manager
+	for (const char* name : { "Texture", "Sound", "Font", "Animation", "Level", "Mesh", "Model", "Viewport", "Primitive", "Client", "RenderBase", "AudioSubsystem", "Music" })
+	{
+		ClassType* cls = newType<ClassType>(nullptr, name, false);
+		cls->base = object;
+		addType(cls);
+	}
+
+	unary_operator_byte = newType<FunctionMember>(this, byte_type, std::initializer_list<Type*>{ byte_type });
+	unary_operator_int = newType<FunctionMember>(this, int_type, std::initializer_list<Type*>{ int_type });
+	unary_operator_single = newType<FunctionMember>(this, single_type, std::initializer_list<Type*>{ single_type });
+	unary_operator_boolean = newType<FunctionMember>(this, boolean_type, std::initializer_list<Type*>{ boolean_type });
+
+	binary_operator_int = newType<FunctionMember>(this, int_type, std::initializer_list<Type*>{ int_type, int_type });
+	binary_operator_single = newType<FunctionMember>(this, single_type, std::initializer_list<Type*>{ single_type, single_type });
+	binary_operator_boolean = newType<FunctionMember>(this, boolean_type, std::initializer_list<Type*>{ boolean_type, boolean_type });
+	binary_operator_string = newType<FunctionMember>(this, string_type, std::initializer_list<Type*>{ string_type, string_type });
+
+	compare_operator_int = newType<FunctionMember>(this, boolean_type, std::initializer_list<Type*>{ int_type, int_type });
+	compare_operator_single = newType<FunctionMember>(this, boolean_type, std::initializer_list<Type*>{ single_type, single_type });
+	compare_operator_boolean = newType<FunctionMember>(this, boolean_type, std::initializer_list<Type*>{ boolean_type, boolean_type });
+	compare_operator_string = newType<FunctionMember>(this, boolean_type, std::initializer_list<Type*>{ string_type, string_type });
+}
+
+TypeSystem::~TypeSystem()
+{
+}
+
+void TypeSystem::setupVectorType()
+{
+	for (Type* t : object->subtypes)
+	{
+		if (t->name == "Vector")
+		{
+			vector_type = dynamic_cast<StructType*>(t);
+		}
+		else if (t->name == "Rotator")
+		{
+			rotator_type = dynamic_cast<StructType*>(t);
+		}
+	}
+}
+
+void TypeSystem::setupOperators()
+{
+	for (MethodTypeMember* member : object->methods)
+	{
+		if (member->is_postoperator)
+		{
+			postoperators[member->name].push_back(member);
+		}
+		if (member->is_preoperator)
+		{
+			preoperators[member->name].push_back(member);
+		}
+		if (member->is_operator)
+		{
+			operators[member->name].push_back(member);
+		}
+	}
+}
+
+void TypeSystem::addType(Type* type)
+{
+	types.push_back(type);
+	if (!type->name.empty())
+		nameToType[type->name] = type;
+}
+
+FunctionMember *TypeSystem::find_best_function(const std::vector<FunctionMember *> &candidates, const std::vector<ExpressionResult> &args)
+{
+	std::vector<FunctionMember *> applicableFuncs;
+	applicableFuncs.reserve(candidates.size());
+	for (FunctionMember *c : candidates)
+	{
+		bool applicable = true;
+
+		size_t i = 0;
+		for (MethodFixedParameter *p : c->parameters)
+		{
+			if (i < args.size())
+			{
+				const ExpressionResult& arg = args[i];
+				if (((p->is_out || p->is_ref) && p->type != arg.type) || !implicit_convert_allowed(arg.type, p->type, p->coerce))
+				{
+					applicable = false;
+					break;
+				}
+			}
+			else
+			{
+				if (!p->is_optional)
+				{
+					applicable = false;
+					break;
+				}
+			}
+			i++;
+		}
+
+		if (applicable)
+			applicableFuncs.push_back(c);
+	}
+
+	if (applicableFuncs.empty())
+		return nullptr;
+
+	FunctionMember *best_func = applicableFuncs.front();
+
+	for (size_t i = 1; i < applicableFuncs.size(); i++)
+	{
+		FunctionMember *c = applicableFuncs[i];
+
+		int better = 0; // 0 = same, -1 = best_func is better, 1 = c is better
+		for (size_t j = 0; j < c->parameters.size(); j++)
+		{
+			int compare = j < args.size() ? compare_conversion(args[j], best_func->parameters[j], c->parameters[j]) : 0;
+			if (better == 0)
+				better = compare;
+
+			if (compare != better)
+				return nullptr; // one isn't better than the other
+		}
+
+		if (better == 0)
+			return nullptr; // at least one argument has to be better
+		else if (better == 1)
+			best_func = c;
+	}
+
+	return best_func;
+}
+
+bool TypeSystem::explicit_convert_allowed(TypeName *src, TypeName *dest)
+{
+	if (implicit_convert_allowed(src, dest, false))
+		return true;
+
+	if (dest == string_type || dest == name_type)
+	{
+		return src == string_type || src == name_type || src == byte_type || src == int_type || src == single_type || dynamic_cast<ClassType*>(src) || dynamic_cast<EnumType*>(src);
+	}
+	else if (auto destClass = dynamic_cast<ClassType*>(dest))
+	{
+		auto cls = destClass;
+		while (cls)
+		{
+			if (cls == src)
+				return true;
+			cls = cls->base;
+		}
+		return false;
+	}
+	return false;
+}
+
+bool TypeSystem::implicit_convert_allowed(TypeName *src, TypeName *dest, bool coerce)
+{
+	if (coerce)
+		return explicit_convert_allowed(src, dest);
+
+	if (src == dest)
+	{
+		return true;
+	}
+	else if (src == byte_type || src == int_type || dynamic_cast<EnumType*>(src))
+	{
+		return dest == byte_type || dest == int_type || dest == single_type || dynamic_cast<EnumType*>(dest);
+	}
+	else if (src == single_type)
+	{
+		return dest == byte_type || dest == int_type || dest == single_type;
+	}
+	else if (auto srcClass = dynamic_cast<ClassType*>(src))
+	{
+		auto cls = srcClass;
+		while (cls)
+		{
+			if (cls == dest)
+				return true;
+			cls = cls->base;
+		}
+		return false;
+	}
+	else if (auto srcStruct = dynamic_cast<StructType*>(src))
+	{
+		auto cls = srcStruct;
+		while (cls)
+		{
+			if (cls == dest)
+				return true;
+			cls = cls->base;
+		}
+		return false;
+	}
+	return false;
+}
+
+int TypeSystem::compare_conversion(const ExpressionResult &src, MethodFixedParameter *t1, MethodFixedParameter *t2)
+{
+	if (t1->type == t2->type) return 0;
+	if (src.type == t1->type) return -1;
+	if (src.type == t2->type) return 1;
+
+	bool conv1 = implicit_convert_allowed(t1->type, t2->type, false);
+	bool conv2 = implicit_convert_allowed(t2->type, t1->type, false);
+	if (conv1 && !conv2) return -1;
+	if (!conv1 && conv2) return 1;
+	return 0;
+}
+
+FunctionMember::FunctionMember(TypeSystem *type_system, Type *return_type, std::initializer_list<Type*> args) : TypeMember(nullptr, {})
+{
+	type = return_type;
+	for (Type *arg : args)
+	{
+		auto fixed_param = type_system->newFixedParameter<MethodFixedParameter>();
+		fixed_param->type = arg;
+		parameters.push_back(fixed_param);
+	}
+}
