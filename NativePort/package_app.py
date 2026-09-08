@@ -53,7 +53,7 @@ for i, line in enumerate(lines):
 
 info = dict(CFBundleExecutable='SurrealEngine', CFBundleIdentifier='local.deusex.native',
             CFBundleName='Deus Ex', CFBundleDisplayName='Deus Ex', CFBundlePackageType='APPL',
-            CFBundleShortVersionString='0.1.1', CFBundleVersion='7', LSMinimumSystemVersion='27.0',
+            CFBundleShortVersionString='0.1.2', CFBundleVersion='8', LSMinimumSystemVersion='27.0',
             NSHighResolutionCapable=True, NSSupportsAutomaticGraphicsSwitching=True,
             LSApplicationCategoryType='public.app-category.role-playing-games',
             LSSupportsGameMode=True, GCSupportsGameMode=True, GCSupportsControllerUserInteraction=True)

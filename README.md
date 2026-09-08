@@ -39,7 +39,12 @@ Display options:
   The selection is remembered for the next launch.
 - In-game video settings: Detail Textures now switches the close-up surface
   detail layer on/off and remembers the choice. World/Object Texture Detail
-  selects the texture mip level; interface textures keep their original detail.
+  selects the highest available texture mip level; interface textures keep their
+  original detail. World textures use trilinear mip filtering and 8x anisotropy.
+- View > Rendering Resolution > 50%, 75% or 100% changes the world resolution.
+  The HUD, menus and text stay at native display resolution at every setting.
+- Fog maps, mesh fog and macro surface textures are rendered when supplied by
+  the game. Vertex buffers are reused across frames to reduce allocation work.
 
 Saves, settings and game.log live in:
 ~/Library/Application Support/Deus Ex Native/

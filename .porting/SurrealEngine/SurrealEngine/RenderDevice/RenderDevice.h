@@ -106,6 +106,8 @@ public:
 	virtual bool Exec(std::string Cmd, OutputDevice& Ar) { return false; }
 	virtual void Lock(vec4 FlashScale, vec4 FlashFog, vec4 ScreenClear, uint8_t* HitData, int* HitSize) = 0;
 	virtual void Unlock(bool Blit) = 0;
+	virtual void BeginWorld() { }
+	virtual void EndWorld() { }
 	virtual void DrawComplexSurface(SceneNode* Frame, SurfaceInfo& Surface, SurfaceFacet& Facet) = 0;
 	virtual void DrawGouraudPolygon(SceneNode* Frame, TextureInfo& Info, const GouraudVertex* Pts, int NumPts, uint32_t PolyFlags) = 0;
 	virtual void DrawTile(SceneNode* Frame, TextureInfo& Info, float X, float Y, float XL, float YL, float U, float V, float UL, float VL, float Z, vec4 Color, vec4 Fog, uint32_t PolyFlags) = 0;

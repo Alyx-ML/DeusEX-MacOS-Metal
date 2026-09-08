@@ -41,8 +41,8 @@ Rect GameWindow::FitRenderRect(int width, int height, bool classicAspectRatio)
 
 Rect GameWindow::GetRenderRect()
 {
-    return FitRenderRect((int)std::round(GetNativePixelWidth() * engine->renderScale),
-        (int)std::round(GetNativePixelHeight() * engine->renderScale), engine->classicAspectRatio);
+    return FitRenderRect(GetNativePixelWidth(),
+        GetNativePixelHeight(), engine->classicAspectRatio);
 }
 
 int GameWindow::GetPixelWidth() { return (int)GetRenderRect().width; }

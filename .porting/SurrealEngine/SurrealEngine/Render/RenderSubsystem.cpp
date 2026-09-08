@@ -46,8 +46,10 @@ void RenderSubsystem::DrawGame(float levelTimeElapsed)
 
 	if (engine->LaunchInfo.ue1Version <= 219 || engine->console->bNoDrawWorld() == false)
 	{
+		Device->BeginWorld();
 		DrawScene();
 		RenderOverlays();
+		Device->EndWorld();
 		if (engine->LaunchInfo.IsDeusEx())
 			PostRenderFlash();
 		Device->EndFlash();
